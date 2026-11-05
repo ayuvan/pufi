@@ -1,0 +1,193 @@
+{
+  "_comment": "PUFI synthetic seed data — hackathon demo use only. Not real financial records.",
+  "businesses": [
+    {
+      "id": "biz-acme-0001",
+      "display_name": "Acme Corporation (Demo)"
+    }
+  ],
+  "suppliers": [
+    {
+      "id": "sup-0001",
+      "external_reference": "SUP-001",
+      "display_name": "TechParts Inc",
+      "country_code": "US",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "t***@techparts.example",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-0002",
+      "external_reference": "SUP-002",
+      "display_name": "Global Components Pvt Ltd",
+      "country_code": "IN",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "p***@globalcomp.example",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-0003",
+      "external_reference": "SUP-003",
+      "display_name": "Euro Supplies GmbH",
+      "country_code": "DE",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "b***@eurosupplies.example",
+      "preferred_currency": "EUR"
+    },
+    {
+      "id": "sup-0004",
+      "external_reference": "SUP-004",
+      "display_name": "Local Services LLC",
+      "country_code": "US",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "a***@localservices.example",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-0005",
+      "external_reference": "SUP-005",
+      "display_name": "Asia Manufacturing Co",
+      "country_code": "CN",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "c***@asiamanuf.example",
+      "preferred_currency": "USD"
+    }
+  ],
+  "obligations": [
+    {
+      "_note": "VALID — standard USD obligation, US supplier",
+      "supplier_reference": "SUP-001",
+      "invoice_reference": "INV-2026-001",
+      "amount": "3500.00",
+      "currency": "USD",
+      "due_at": "2026-11-15",
+      "notes": "Q4 component delivery — batch A"
+    },
+    {
+      "_note": "VALID — USD obligation, US supplier",
+      "supplier_reference": "SUP-001",
+      "invoice_reference": "INV-2026-002",
+      "amount": "2750.00",
+      "currency": "USD",
+      "due_at": "2026-11-18",
+      "notes": "Q4 component delivery — batch B"
+    },
+    {
+      "_note": "VALID — USD obligation, US supplier",
+      "supplier_reference": "SUP-001",
+      "invoice_reference": "INV-2026-003",
+      "amount": "1200.00",
+      "currency": "USD",
+      "due_at": "2026-11-20",
+      "notes": "Replacement parts order"
+    },
+    {
+      "_note": "VALID — USD obligation, US supplier #2",
+      "supplier_reference": "SUP-004",
+      "invoice_reference": "INV-2026-004",
+      "amount": "4800.00",
+      "currency": "USD",
+      "due_at": "2026-11-14",
+      "notes": "Logistics and warehousing November"
+    },
+    {
+      "_note": "VALID — USD obligation, US supplier #2",
+      "supplier_reference": "SUP-004",
+      "invoice_reference": "INV-2026-005",
+      "amount": "1050.00",
+      "currency": "USD",
+      "due_at": "2026-11-17",
+      "notes": "Overtime charges October"
+    },
+    {
+      "_note": "VALID — USD obligation, Indian supplier (simulated route — no PayPal INR assumption)",
+      "supplier_reference": "SUP-002",
+      "invoice_reference": "INV-2026-006",
+      "amount": "6200.00",
+      "currency": "USD",
+      "due_at": "2026-11-22",
+      "notes": "Software development services — INR settlement to be simulated"
+    },
+    {
+      "_note": "VALID — USD obligation, German supplier",
+      "supplier_reference": "SUP-003",
+      "invoice_reference": "INV-2026-007",
+      "amount": "2900.00",
+      "currency": "USD",
+      "due_at": "2026-11-25",
+      "notes": "Industrial parts EU origin"
+    },
+    {
+      "_note": "VALID — USD obligation, Chinese supplier",
+      "supplier_reference": "SUP-005",
+      "invoice_reference": "INV-2026-008",
+      "amount": "5100.00",
+      "currency": "USD",
+      "due_at": "2026-11-28",
+      "notes": "Electronics assembly November batch"
+    },
+    {
+      "_note": "VALID — USD obligation, US supplier #1",
+      "supplier_reference": "SUP-001",
+      "invoice_reference": "INV-2026-009",
+      "amount": "875.00",
+      "currency": "USD",
+      "due_at": "2026-11-30",
+      "notes": "Rush delivery surcharge"
+    },
+    {
+      "_note": "VALID — USD obligation, US supplier #2",
+      "supplier_reference": "SUP-004",
+      "invoice_reference": "INV-2026-010",
+      "amount": "3300.00",
+      "currency": "USD",
+      "due_at": "2026-11-29",
+      "notes": "Freight and handling Q4"
+    },
+    {
+      "_note": "DUPLICATE — same invoice_reference + supplier as INV-2026-001 / SUP-001 (triggers duplicate detection on Day 2)",
+      "supplier_reference": "SUP-001",
+      "invoice_reference": "INV-2026-001",
+      "amount": "3500.00",
+      "currency": "USD",
+      "due_at": "2026-11-15",
+      "notes": "Re-submitted duplicate — should be rejected"
+    },
+    {
+      "_note": "DUPLICATE — same invoice_reference + supplier as INV-2026-004 / SUP-004",
+      "supplier_reference": "SUP-004",
+      "invoice_reference": "INV-2026-004",
+      "amount": "4800.00",
+      "currency": "USD",
+      "due_at": "2026-11-14",
+      "notes": "Second submission of logistics invoice — duplicate"
+    },
+    {
+      "_note": "INVALID — zero amount (validation service Day 2 flags this as invalid)",
+      "supplier_reference": "SUP-001",
+      "invoice_reference": "INV-2026-011",
+      "amount": "0.01",
+      "currency": "USD",
+      "due_at": "2026-11-20",
+      "notes": "Penny test — suspiciously low amount for a supplier invoice"
+    },
+    {
+      "_note": "INVALID — unsupported currency code (ZZZ is not ISO 4217)",
+      "supplier_reference": "SUP-002",
+      "invoice_reference": "INV-2026-012",
+      "amount": "1500.00",
+      "currency": "ZZZ",
+      "due_at": "2026-11-21",
+      "notes": "Currency ZZZ is invalid — validation service must reject"
+    },
+    {
+      "_note": "ELIGIBILITY TEST — future-dated, non-US supplier, USD. Valid data but routing eligibility checked on Day 3",
+      "supplier_reference": "SUP-002",
+      "invoice_reference": "INV-2026-013",
+      "amount": "9500.00",
+      "currency": "USD",
+      "due_at": "2026-12-15",
+      "notes": "Large advance payment — Q1 2027 planning. Route eligibility test candidate."
+    }
+  ]
+}
