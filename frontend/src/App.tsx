@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react'
 import ObligationsPage from './pages/ObligationsPage'
 import ImportPage from './pages/ImportPage'
 import BatchesPage from './pages/BatchesPage'
+import AnalysisPage from './pages/AnalysisPage'
 import './App.css'
 
-type Page = 'obligations' | 'import' | 'batches'
+type Page = 'obligations' | 'import' | 'batches' | 'analysis'
 
 function App() {
   const [page, setPage] = useState<Page>('obligations')
@@ -13,7 +14,7 @@ function App() {
   useEffect(() => {
     function onHashChange() {
       const hash = window.location.hash.replace('#', '') as Page
-      if (['obligations', 'import', 'batches'].includes(hash)) {
+      if (['obligations', 'import', 'batches', 'analysis'].includes(hash)) {
         setPage(hash)
       }
     }
@@ -61,8 +62,11 @@ function App() {
         >
           Batches
         </button>
-        <button className="nav-link disabled" aria-disabled="true" disabled>
-          Analysis (Day 3)
+        <button
+          className={`nav-link ${page === 'analysis' ? 'active' : ''}`}
+          onClick={() => navigate('analysis')}
+        >
+          Analysis
         </button>
         <button className="nav-link disabled" aria-disabled="true" disabled>
           Audit (Day 5)
@@ -73,6 +77,7 @@ function App() {
         {page === 'obligations' && <ObligationsPage />}
         {page === 'import' && <ImportPage />}
         {page === 'batches' && <BatchesPage />}
+        {page === 'analysis' && <AnalysisPage />}
       </main>
 
       <footer className="app-footer">

@@ -181,3 +181,82 @@ def client(db):
         yield c
 
     app.dependency_overrides.clear()
+
+
+# ---------------------------------------------------------------------------
+# Day 3: batch + obligations fixture for analysis endpoint tests
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def seeded_batch_id(db):
+    """
+    Creates a Business, Supplier, two VALIDATED Obligations, and a PaymentBatch
+    containing both obligations.  Returns the batch ID string.
+
+    Uses uuid-based IDs to avoid UNIQUE constraint collisions when the fixture
+    runs multiple times against the shared in-memory schema.
+    """
+    import uuid as _uuid
+    from decimal import Decimal
+    from datetime import date
+    from models.entities import Business, Supplier, Obligation, PaymentBatch, BatchObligation
+
+    _id = _uuid.uuid4().hex[:8]  # short random suffix for uniqueness
+
+    biz = Business(id=f"BIZ-ANA-{_id}", display_name="Analysis Corp")
+    db.add(biz)
+    db.flush()
+
+    sup = Supplier(
+        id=f"SUP-ANA-{_id}",
+        business_id=f"BIZ-ANA-{_id}",
+        external_reference=f"EXT-ANA-{_id}",
+        display_name="Analysis Supplier",
+        country_code="US",
+        recipient_reference_type="EMAIL",
+        recipient_reference_masked="s***@example.com",
+        preferred_currency="USD",
+    )
+    db.add(sup)
+    db.flush()
+
+    ob1 = Obligation(
+        id=f"OBL-ANA-{_id}-1",
+        business_id=f"BIZ-ANA-{_id}",
+        supplier_id=f"SUP-ANA-{_id}",
+        invoice_reference=f"INV-ANA-{_id}-1",
+        amount=Decimal("500.00"),
+        currency="USD",
+        due_at=date(2026, 12, 31),
+        status="VALIDATED",
+        source_hash=f"ana{_id}1",
+    )
+    ob2 = Obligation(
+        id=f"OBL-ANA-{_id}-2",
+        business_id=f"BIZ-ANA-{_id}",
+        supplier_id=f"SUP-ANA-{_id}",
+        invoice_reference=f"INV-ANA-{_id}-2",
+        amount=Decimal("750.00"),
+        currency="USD",
+        due_at=date(2026, 12, 31),
+        status="VALIDATED",
+        source_hash=f"ana{_id}2",
+    )
+    db.add_all([ob1, ob2])
+    db.flush()
+
+    batch_id = f"BATCH-ANA-{_id}"
+    batch = PaymentBatch(
+        id=batch_id,
+        business_id=f"BIZ-ANA-{_id}",
+        batch_reference=f"BATCH-ANALYSIS-{_id}",
+        status="DRAFT",
+    )
+    db.add(batch)
+    db.flush()
+
+    db.add(BatchObligation(batch_id=batch_id, obligation_id=f"OBL-ANA-{_id}-1"))
+    db.add(BatchObligation(batch_id=batch_id, obligation_id=f"OBL-ANA-{_id}-2"))
+    db.flush()
+
+    return batch_id

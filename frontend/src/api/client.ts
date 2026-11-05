@@ -181,3 +181,65 @@ export const createBatch = (req: BatchCreateRequest): Promise<Batch> =>
 /** Get batch detail by ID. */
 export const fetchBatch = (id: string): Promise<Batch> =>
   apiFetch<Batch>(`/batches/${id}`)
+
+// -------------------------------------------------------------------------
+// Day 3: Financial Analysis types
+// -------------------------------------------------------------------------
+
+export interface ProviderRoute {
+  provider_code: string
+  display_name: string
+  environment: string
+  is_simulated: boolean
+  eligible: boolean
+  exclusion_reasons: string[]
+  provider_fee: string | null
+  fx_spread_cost: string | null
+  total_estimated_cost: string | null
+  estimated_recipient_amount: string | null
+  recipient_currency: string | null
+  quote_rate: string | null
+  effective_rate: string | null
+  quote_label: string
+  quote_source: string
+  quoted_at: string | null
+  expires_at: string | null
+  warnings: string[]
+  estimated_processing_hours: number | null
+}
+
+export interface AiRecommendation {
+  summary: string
+  recommended_route: string | null
+  reasoning_factors: string[]
+  warnings: string[]
+  requires_human_review: boolean
+  evidence_fields: string[]
+  fallback_used: boolean
+  fallback_reason: string | null
+  model_name: string
+}
+
+export interface BatchAnalysis {
+  batch_id: string
+  batch_reference: string
+  total_obligations: number
+  total_amount_by_currency: Record<string, string>
+  provider_routes: ProviderRoute[]
+  ai_recommendation: AiRecommendation | null
+  routing_strategy: string
+  correlation_id: string
+  analysis_label: string
+  funding_snapshot_label: string
+  disclaimer: string
+}
+
+/** Run financial analysis for a batch (POST — triggers deterministic routing + AI advisory). */
+export const fetchBatchAnalysis = (
+  batchId: string,
+  strategy: 'LOWEST_COST' | 'FASTEST' | 'BALANCED' = 'LOWEST_COST'
+): Promise<BatchAnalysis> =>
+  apiFetch<BatchAnalysis>(
+    `/batches/${batchId}/analyze?strategy=${strategy}`,
+    { method: 'POST' }
+  )

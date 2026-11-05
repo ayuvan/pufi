@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse
 
 from models.db import Base, engine  # load_dotenv() runs inside models/db.py
 from models import entities  # noqa: F401 — registers ORM classes with Base
-from routers import health, obligations, batches
+from routers import health, obligations, batches, analysis
 
 logger = logging.getLogger("pufi")
 logging.basicConfig(
@@ -117,3 +117,4 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 app.include_router(health.router, prefix="/api/v1", tags=["health"])
 app.include_router(obligations.router, prefix="/api/v1", tags=["obligations"])
 app.include_router(batches.router, prefix="/api/v1", tags=["batches"])
+app.include_router(analysis.router, prefix="/api/v1", tags=["analysis"])

@@ -254,3 +254,137 @@ class BatchObligation(Base):
 
     def __repr__(self) -> str:
         return f"<BatchObligation batch={self.batch_id!r} obligation={self.obligation_id!r}>"
+
+
+# ---------------------------------------------------------------------------
+# FxQuote  (Day 3)
+# ---------------------------------------------------------------------------
+
+class FxQuote(Base):
+    """
+    A foreign-exchange rate quote used for cost estimation.
+
+    IMPORTANT LABELLING RULES:
+    - is_simulated=True  → rate is synthetic/assumed; must be labelled SIMULATED
+    - is_simulated=False → rate came from a live external source (Sandbox/real)
+    Never store a hard-coded demo rate and label it as live.
+
+    spread_bps: spread in basis points (100 bps = 1%)
+    """
+    __tablename__ = "fx_quotes"
+
+    id: str = Column(String(36), primary_key=True, default=_new_uuid)
+    base_currency: str = Column(String(3), nullable=False)
+    quote_currency: str = Column(String(3), nullable=False)
+
+    # Rate stored with 8dp for FX precision
+    rate: Decimal = Column(Numeric(24, 8), nullable=False)
+
+    # Spread in basis points (e.g. 50 = 0.50%)
+    spread_bps: Decimal = Column(Numeric(10, 2), nullable=False, default=Decimal("0"))
+
+    # Fixed fee in base currency per transaction (may be zero)
+    fee_amount: Decimal = Column(Numeric(19, 4), nullable=False, default=Decimal("0"))
+
+    # Where this rate came from
+    source: str = Column(String(100), nullable=False)
+
+    quoted_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
+    expires_at: datetime = Column(DateTime, nullable=False)
+
+    # True = synthetic/demo rate; False = live external rate
+    is_simulated: bool = Column(Boolean, nullable=False, default=True)
+
+    created_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
+
+    def __repr__(self) -> str:
+        label = "SIMULATED" if self.is_simulated else "LIVE"
+        return (
+            f"<FxQuote {self.base_currency}/{self.quote_currency} "
+            f"rate={self.rate} [{label}]>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# FundingSnapshot  (Day 3)
+# ---------------------------------------------------------------------------
+
+class FundingSnapshot(Base):
+    """
+    A point-in-time record of funds configured as available for a provider route.
+
+    This is NEVER a verified bank balance. It is either:
+    - SIMULATED: synthetic demo value
+    - MANUALLY_CONFIGURED: entered by a business user for planning purposes
+
+    source_type must be one of: 'SIMULATED' | 'MANUALLY_CONFIGURED'
+    """
+    __tablename__ = "funding_snapshots"
+
+    id: str = Column(String(36), primary_key=True, default=_new_uuid)
+    provider_code: str = Column(String(50), nullable=False)
+    currency: str = Column(String(3), nullable=False)
+    available_amount: Decimal = Column(Numeric(19, 4), nullable=False)
+
+    # SIMULATED or MANUALLY_CONFIGURED — never 'LIVE_BANK_BALANCE'
+    source_type: str = Column(String(30), nullable=False, default="SIMULATED")
+
+    observed_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
+    is_simulated: bool = Column(Boolean, nullable=False, default=True)
+
+    __table_args__ = (
+        CheckConstraint("available_amount >= 0", name="ck_funding_non_negative"),
+        CheckConstraint(
+            "source_type IN ('SIMULATED','MANUALLY_CONFIGURED')",
+            name="ck_funding_source_type",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<FundingSnapshot provider={self.provider_code!r} "
+            f"{self.currency} {self.available_amount} [{self.source_type}]>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# AiRecommendation  (Day 3)
+# ---------------------------------------------------------------------------
+
+class AiRecommendation(Base):
+    """
+    Persisted AI decision-support output for a batch analysis request.
+
+    The AI output is advisory only. The backend validates that any
+    recommended_route_id is within the deterministic eligible-route set
+    before this record is created.
+
+    fallback_used=True means the AI was unavailable or returned invalid output;
+    the deterministic engine result was returned instead.
+    """
+    __tablename__ = "ai_recommendations"
+
+    id: str = Column(String(36), primary_key=True, default=_new_uuid)
+    batch_id: str = Column(String(36), ForeignKey("payment_batches.id"), nullable=False)
+
+    model_name: str = Column(String(100), nullable=False)
+
+    # SHA-256 of the sanitized input sent to the AI (for audit reproducibility)
+    input_summary_hash: str = Column(String(64), nullable=False)
+
+    # Full structured JSON response (secrets-free)
+    recommendation_json: str = Column(Text, nullable=False)
+
+    fallback_used: bool = Column(Boolean, nullable=False, default=False)
+    fallback_reason: str = Column(Text, nullable=True)
+
+    created_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
+
+    # Relationships
+    batch: PaymentBatch = relationship("PaymentBatch")
+
+    def __repr__(self) -> str:
+        return (
+            f"<AiRecommendation batch={self.batch_id!r} "
+            f"fallback={self.fallback_used}>"
+        )
