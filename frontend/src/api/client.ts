@@ -11,7 +11,7 @@
 const BASE = '/api/v1'
 
 // -------------------------------------------------------------------------
-// Types
+// Shared types
 // -------------------------------------------------------------------------
 
 export interface SupplierSummary {
@@ -63,6 +63,70 @@ export interface ApiError {
 }
 
 // -------------------------------------------------------------------------
+// Day 2: Import types
+// -------------------------------------------------------------------------
+
+export interface ObligationImportRow {
+  supplier_reference: string
+  invoice_reference: string
+  amount: string
+  currency: string
+  due_at: string
+  notes?: string
+}
+
+export type ImportResultStatus = 'ACCEPTED' | 'DUPLICATE' | 'INVALID'
+
+export interface ImportRowResult {
+  row_index: number
+  invoice_reference: string
+  supplier_reference: string
+  status: ImportResultStatus
+  reason: string | null
+  obligation_id: string | null
+}
+
+export interface ImportResponse {
+  total_rows: number
+  accepted: number
+  duplicate: number
+  invalid: number
+  results: ImportRowResult[]
+  correlation_id: string
+}
+
+// -------------------------------------------------------------------------
+// Day 2: Batch types
+// -------------------------------------------------------------------------
+
+export interface BatchObligationSummary {
+  obligation_id: string
+  invoice_reference: string
+  amount: string
+  currency: string
+  supplier_name: string
+  added_at: string
+}
+
+export interface Batch {
+  id: string
+  batch_reference: string
+  status: string
+  notes: string | null
+  created_at: string
+  approved_by: string | null
+  approved_at: string | null
+  obligation_count: number
+  obligations: BatchObligationSummary[]
+}
+
+export interface BatchCreateRequest {
+  batch_reference: string
+  obligation_ids: string[]
+  notes?: string
+}
+
+// -------------------------------------------------------------------------
 // Core fetch helper
 // -------------------------------------------------------------------------
 
@@ -99,3 +163,21 @@ export const fetchObligations = (params?: {
   const query = qs.toString() ? `?${qs.toString()}` : ''
   return apiFetch<ObligationListResponse>(`/obligations${query}`)
 }
+
+/** Import obligation rows and get per-row validation results. */
+export const importObligations = (rows: ObligationImportRow[]): Promise<ImportResponse> =>
+  apiFetch<ImportResponse>('/obligations/import', {
+    method: 'POST',
+    body: JSON.stringify(rows),
+  })
+
+/** Create a payment batch from validated obligation IDs. */
+export const createBatch = (req: BatchCreateRequest): Promise<Batch> =>
+  apiFetch<Batch>('/batches', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
+
+/** Get batch detail by ID. */
+export const fetchBatch = (id: string): Promise<Batch> =>
+  apiFetch<Batch>(`/batches/${id}`)

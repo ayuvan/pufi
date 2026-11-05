@@ -119,7 +119,6 @@ def create_batch(
         db.add(link)
 
     db.commit()
-    db.refresh(batch)
 
     logger.info(
         "Batch created [corr=%s]: batch_id=%s ref=%r obligations=%d",
@@ -129,6 +128,14 @@ def create_batch(
         len(obligations),
     )
 
+    # Reload batch and obligations after commit (session expiry clears in-memory state)
+    db.refresh(batch)
+    obligations = (
+        db.query(Obligation)
+        .options(joinedload(Obligation.supplier))
+        .filter(Obligation.id.in_([ob.id for ob in obligations]))
+        .all()
+    )
     return _batch_to_schema(batch, obligations, db)
 
 
@@ -148,18 +155,22 @@ def get_batch(
 ) -> BatchOut:
     batch = (
         db.query(PaymentBatch)
-        .options(
-            joinedload(PaymentBatch.batch_obligations)
-            .joinedload(BatchObligation.obligation)
-            .joinedload(Obligation.supplier)
-        )
         .filter(PaymentBatch.id == batch_id)
         .first()
     )
     if not batch:
         raise HTTPException(status_code=404, detail={"error": "BATCH_NOT_FOUND"})
 
-    obligations = [bo.obligation for bo in batch.batch_obligations]
+    # Load obligations via the junction table
+    batch_obs = (
+        db.query(BatchObligation)
+        .options(
+            joinedload(BatchObligation.obligation).joinedload(Obligation.supplier)
+        )
+        .filter(BatchObligation.batch_id == batch_id)
+        .all()
+    )
+    obligations = [bo.obligation for bo in batch_obs]
     return _batch_to_schema(batch, obligations, db)
 
 
@@ -173,9 +184,18 @@ def _batch_to_schema(
     db: Session,
 ) -> BatchOut:
     """Convert a PaymentBatch ORM object to its API schema."""
-    # Reload batch_obligations to get added_at timestamps
-    db.refresh(batch)
-    bo_map = {bo.obligation_id: bo for bo in batch.batch_obligations}
+    # Query BatchObligation rows directly to get added_at timestamps.
+    # Avoids relying on lazy-loaded relationship state after commit/refresh.
+    ob_ids = [ob.id for ob in obligations]
+    batch_obs = (
+        db.query(BatchObligation)
+        .filter(
+            BatchObligation.batch_id == batch.id,
+            BatchObligation.obligation_id.in_(ob_ids),
+        )
+        .all()
+    )
+    bo_map = {bo.obligation_id: bo for bo in batch_obs}
 
     obligation_summaries = [
         BatchObligationSummary(
