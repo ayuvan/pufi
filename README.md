@@ -117,3 +117,85 @@ built and tested before any feature is described as complete.
 -   PayPal Payouts API reference:
     https://developer.paypal.com/api/payments.payouts-batch/v1/
 -   PayPal webhooks: https://developer.paypal.com/api/rest/webhooks/
+
+
+---
+
+## Day 4: Approval & PayPal Sandbox Execution
+
+### Setup PayPal Credentials (optional)
+
+1. Copy `.env.example` to `backend/.env`.
+2. Set your PayPal Sandbox client_id and secret:
+   ```
+   PAYPAL_MODE=sandbox
+   PAYPAL_CLIENT_ID=your_paypal_sandbox_client_id_here
+   PAYPAL_CLIENT_SECRET=your_paypal_sandbox_client_secret_here
+   ```
+3. If credentials are absent, PUFI operates in **simulated mode** (no real PayPal calls are made and results are clearly labelled `SIMULATED`).
+
+> **Note:** `PAYPAL_MODE=sandbox` is the only accepted value. Production mode is not supported in this prototype.
+
+### Demo workflow
+
+Run the following commands from the project root to exercise the full Day 4 workflow:
+
+```powershell
+# 1. Seed synthetic base data (13 draft obligations)
+cd backend ; .venv\Scripts\python seed.py
+
+# 2. Create the demo batch (prints actual batch ID — do NOT hardcode it)
+cd backend ; .venv\Scripts\python demo_seed.py
+# Example output:
+#   Batch ID : 1cc14a1c-aa96-4902-8a78-b987f932265e
+#   Batch Reference : DEMO-BATCH-DAY4
+
+# 3. Start backend
+cd backend ; .venv\Scripts\uvicorn main:app --reload
+
+# 4. Start frontend (dev)
+cd frontend ; pnpm dev
+```
+
+Then open `http://localhost:5173` and:
+- Go to **Batches → Create Batch** (or navigate directly to the demo batch via the Analysis page).
+- Click **View Approval & Execution** on the created batch.
+- Run financial analysis, review eligible providers and AI advisory.
+- Complete the approval form and click **Approve for Sandbox Submission**.
+- Click **Submit to PayPal Sandbox** (requires credentials) or observe simulated mode.
+- Click **Refresh Status** to poll item-level statuses.
+
+### API quick reference
+
+```
+POST /api/v1/batches/{id}/analyze?strategy=LOWEST_COST
+POST /api/v1/batches/{id}/approve
+POST /api/v1/batches/{id}/submit
+POST /api/v1/batches/{id}/refresh-status
+GET  /api/v1/batches/{id}/instructions
+GET  /api/v1/batches/{id}/audit
+```
+
+### Batch lifecycle
+
+```
+DRAFT → VALIDATED → ANALYZED → APPROVED → SUBMITTED → PROCESSING → COMPLETED
+                                                                   → PARTIALLY_COMPLETED
+                                                                   → FAILED
+```
+
+### Financial constraints
+
+- All amounts use Python `Decimal` / SQLite `NUMERIC`. Never binary float.
+- Every amount has an explicit ISO currency code.
+- PayPal Payouts support USD only in this prototype.
+- Simulated provider results are explicitly labelled `SIMULATED`.
+- AI advisory cannot approve batches, modify amounts, or override eligibility.
+- Submission to PayPal creates a Sandbox payout (test-only). No real funds move.
+
+### Running tests
+
+```powershell
+cd backend ; .venv\Scripts\python -m pytest tests/ -v
+# Expected: 107 passed
+```

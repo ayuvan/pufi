@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import ObligationsPage from './pages/ObligationsPage'
 import ImportPage from './pages/ImportPage'
 import BatchesPage from './pages/BatchesPage'
+import BatchDetailPage from './pages/BatchDetailPage'
 import AnalysisPage from './pages/AnalysisPage'
 import './App.css'
 
@@ -9,13 +10,22 @@ type Page = 'obligations' | 'import' | 'batches' | 'analysis'
 
 function App() {
   const [page, setPage] = useState<Page>('obligations')
+  const [batchDetailId, setBatchDetailId] = useState<string | null>(null)
 
   // Simple hash-based navigation so each page is bookmarkable
   useEffect(() => {
     function onHashChange() {
-      const hash = window.location.hash.replace('#', '') as Page
+      const hash = window.location.hash.replace('#', '')
+      // Support /batches/:id deep links via hash e.g. #batch/uuid
+      if (hash.startsWith('batch/')) {
+        const id = hash.slice('batch/'.length)
+        setBatchDetailId(id)
+        setPage('batches')
+        return
+      }
       if (['obligations', 'import', 'batches', 'analysis'].includes(hash)) {
-        setPage(hash)
+        setPage(hash as Page)
+        setBatchDetailId(null)
       }
     }
     window.addEventListener('hashchange', onHashChange)
@@ -26,6 +36,13 @@ function App() {
   function navigate(p: Page) {
     window.location.hash = p
     setPage(p)
+    setBatchDetailId(null)
+  }
+
+  function openBatchDetail(id: string) {
+    window.location.hash = `batch/${id}`
+    setBatchDetailId(id)
+    setPage('batches')
   }
 
   return (
@@ -76,7 +93,18 @@ function App() {
       <main className="app-main">
         {page === 'obligations' && <ObligationsPage />}
         {page === 'import' && <ImportPage />}
-        {page === 'batches' && <BatchesPage />}
+        {page === 'batches' && !batchDetailId && (
+          <BatchesPage onOpenBatchDetail={openBatchDetail} />
+        )}
+        {page === 'batches' && batchDetailId && (
+          <BatchDetailPage
+            batchId={batchDetailId}
+            onBack={() => {
+              window.location.hash = 'batches'
+              setBatchDetailId(null)
+            }}
+          />
+        )}
         {page === 'analysis' && <AnalysisPage />}
       </main>
 

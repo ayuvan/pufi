@@ -3,6 +3,8 @@ PUFI — ORM entity definitions.
 
 Day 1 tables: Business, Supplier, Obligation
 Day 2 tables: PaymentBatch, BatchObligation
+Day 3 tables: FxQuote, FundingSnapshot, AiRecommendation
+Day 4 tables: PaymentInstruction, ProviderSubmission, AuditEvent
 
 Money rules (enforced here and throughout the codebase):
   - Amount columns use NUMERIC(19, 4)   — never Float or Double.
@@ -20,13 +22,19 @@ State machine for PaymentBatch.status:
   PENDING_APPROVAL → APPROVED | REJECTED
   APPROVED → SUBMITTED | CANCELLED
   SUBMITTED → COMPLETED | PARTIALLY_COMPLETED | FAILED
+
+State machine for PaymentInstruction.status:
+  CREATED → APPROVED → SUBMISSION_PENDING → SUBMITTED
+  SUBMITTED → COMPLETED | FAILED | UNKNOWN
+  UNKNOWN: timeout; query provider before retry (never re-submit with new ID)
+  Any → CANCELLED
 """
 import uuid
 from datetime import datetime, date, timezone  # M-4: include timezone
 from decimal import Decimal
 
 from sqlalchemy import (
-    CheckConstraint, Column, Date, DateTime,
+    CheckConstraint, Column, Date, DateTime, Integer,
     ForeignKey, Numeric, String, Text, UniqueConstraint, Boolean,
 )
 from sqlalchemy.orm import relationship  # L-3: removed unused Mapped
@@ -209,6 +217,20 @@ class PaymentBatch(Base):
     approved_by: str = Column(String(255), nullable=True)
     approved_at: datetime = Column(DateTime, nullable=True)
 
+    # Day 4: approval and execution tracking fields
+    # Provider selected at approval time (e.g. "PAYPAL_SANDBOX")
+    selected_provider_code: str = Column(String(50), nullable=True)
+    # Reference to the AiRecommendation used at approval time (advisory only).
+    # Stored as a plain string to avoid a circular FK cycle with ai_recommendations.
+    analysis_snapshot_id: str = Column(String(36), nullable=True)
+    # Amount and currency confirmed by the approver (must match analysis snapshot)
+    approved_total_amount: Decimal = Column(Numeric(19, 4), nullable=True)
+    approved_currency: str = Column(String(3), nullable=True)
+    # Number of recipients approved for payout
+    approved_recipient_count: int = Column(Integer, nullable=True)
+    # Routing strategy chosen at approval time
+    approved_routing_strategy: str = Column(String(30), nullable=True)
+
     notes: str = Column(Text, nullable=True)
 
     created_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
@@ -387,4 +409,179 @@ class AiRecommendation(Base):
         return (
             f"<AiRecommendation batch={self.batch_id!r} "
             f"fallback={self.fallback_used}>"
+        )
+
+
+
+# ---------------------------------------------------------------------------
+# PaymentInstruction  (Day 4)
+# ---------------------------------------------------------------------------
+
+class PaymentInstruction(Base):
+    """
+    One payment instruction derived from a single obligation, targeting one provider.
+
+    An instruction is NOT proof that money has moved.  It represents the
+    intent to submit a specific amount/currency to a specific provider for
+    one obligation.
+
+    idempotency_key is generated once and never changed, even on retry.
+    sender_item_id is the per-item reference sent to the provider (e.g. PayPal
+    sender_item_id); it must also be stable across retries.
+
+    settlement_evidence is kept separate from status:
+      status            → what PUFI believes the instruction state is
+      settlement_evidence → whether external evidence of fund movement exists
+    """
+    __tablename__ = "payment_instructions"
+
+    id: str = Column(String(36), primary_key=True, default=_new_uuid)
+    batch_id: str = Column(String(36), ForeignKey("payment_batches.id"), nullable=False)
+    obligation_id: str = Column(String(36), ForeignKey("obligations.id"), nullable=False)
+    provider_code: str = Column(String(50), nullable=False)
+
+    # NUMERIC — never Float
+    amount: Decimal = Column(Numeric(19, 4), nullable=False)
+    currency: str = Column(String(3), nullable=False)
+
+    # Stable per-instruction idempotency key (never regenerated on retry)
+    idempotency_key: str = Column(String(100), nullable=False, unique=True)
+    # Stable per-item reference sent to the provider
+    sender_item_id: str = Column(String(100), nullable=False)
+
+    status: str = Column(String(30), nullable=False, default="CREATED")
+    settlement_evidence: str = Column(String(50), nullable=False, default="NOT_CONFIRMED")
+
+    # PayPal-specific response fields (nullable until submitted)
+    paypal_payout_item_id: str = Column(String(100), nullable=True)
+    paypal_transaction_id: str = Column(String(100), nullable=True)
+    paypal_item_status: str = Column(String(30), nullable=True)
+    error_message: str = Column(Text, nullable=True)
+
+    created_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
+    updated_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('CREATED','APPROVED','SUBMISSION_PENDING','SUBMITTED',"
+            "'UNKNOWN','COMPLETED','FAILED','CANCELLED')",
+            name="ck_instruction_status_valid",
+        ),
+        CheckConstraint(
+            "settlement_evidence IN ('NOT_APPLICABLE','NOT_CONFIRMED',"
+            "'PROVIDER_REPORTED_COMPLETE','EXTERNAL_EVIDENCE_REQUIRED',"
+            "'RECONCILED','EXCEPTION')",
+            name="ck_instruction_settlement_evidence_valid",
+        ),
+    )
+
+    # Relationships
+    batch: PaymentBatch = relationship("PaymentBatch")
+    obligation: Obligation = relationship("Obligation")
+
+    def __repr__(self) -> str:
+        return (
+            f"<PaymentInstruction id={self.id!r} provider={self.provider_code!r} "
+            f"amount={self.amount} {self.currency} status={self.status!r}>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# ProviderSubmission  (Day 4)
+# ---------------------------------------------------------------------------
+
+class ProviderSubmission(Base):
+    """
+    Records one submission attempt to a payment provider for a batch.
+
+    sender_batch_id is the idempotency key sent to the provider.  It must
+    be persisted BEFORE the API call and reused on any retry, so that
+    PayPal (and other providers) can detect duplicate submissions.
+
+    paypal_payout_batch_id: the reference returned by PayPal on success.
+    response_summary: sanitized JSON representation of the provider response
+                      (secrets and tokens must be stripped before storage).
+    """
+    __tablename__ = "provider_submissions"
+
+    id: str = Column(String(36), primary_key=True, default=_new_uuid)
+    batch_id: str = Column(String(36), ForeignKey("payment_batches.id"), nullable=False)
+    provider_code: str = Column(String(50), nullable=False)
+
+    # Stable idempotency key sent to the provider — persisted before API call
+    sender_batch_id: str = Column(String(100), nullable=False, unique=True)
+
+    # PayPal's reference for the batch (returned after successful submission)
+    paypal_payout_batch_id: str = Column(String(100), nullable=True)
+
+    attempt_number: int = Column(Integer, nullable=False, default=1)
+    status: str = Column(String(30), nullable=False, default="PENDING")
+    paypal_batch_status: str = Column(String(30), nullable=True)
+
+    submitted_at: datetime = Column(DateTime, nullable=True)
+    response_at: datetime = Column(DateTime, nullable=True)
+
+    # Sanitized JSON — no credentials, no access tokens
+    response_summary: str = Column(Text, nullable=True)
+    error_message: str = Column(Text, nullable=True)
+
+    created_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PENDING','SUBMITTED','FAILED','UNKNOWN')",
+            name="ck_provider_submission_status_valid",
+        ),
+    )
+
+    # Relationships
+    batch: PaymentBatch = relationship("PaymentBatch")
+
+    def __repr__(self) -> str:
+        return (
+            f"<ProviderSubmission batch={self.batch_id!r} provider={self.provider_code!r} "
+            f"sender_batch_id={self.sender_batch_id!r} status={self.status!r}>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# AuditEvent  (Day 4)
+# ---------------------------------------------------------------------------
+
+class AuditEvent(Base):
+    """
+    Immutable audit log entry for key state transitions.
+
+    Rules:
+    - Audit events are NEVER deleted or updated.
+    - details_redacted must have all secrets, tokens, and full recipient
+      identifiers stripped before storage.
+    - actor is a user/system identifier (e.g. "DEMO_USER", "SYSTEM").
+    """
+    __tablename__ = "audit_events"
+
+    id: str = Column(String(36), primary_key=True, default=_new_uuid)
+
+    # Entity being audited (e.g. "BATCH", "INSTRUCTION", "SUBMISSION")
+    entity_type: str = Column(String(50), nullable=False)
+    entity_id: str = Column(String(36), nullable=False)
+
+    # What happened (e.g. "APPROVED", "SUBMITTED", "STATUS_REFRESHED")
+    event_type: str = Column(String(100), nullable=False)
+
+    # Who triggered this event
+    actor: str = Column(String(255), nullable=False)
+
+    # Optional correlation ID for request tracing
+    correlation_id: str = Column(String(36), nullable=True)
+
+    # Sanitized detail JSON (no secrets)
+    details_redacted: str = Column(Text, nullable=True)
+
+    created_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
+
+    def __repr__(self) -> str:
+        return (
+            f"<AuditEvent entity={self.entity_type}/{self.entity_id!r} "
+            f"event={self.event_type!r} actor={self.actor!r}>"
         )

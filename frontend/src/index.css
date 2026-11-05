@@ -749,3 +749,233 @@
   border-top: 1px solid var(--color-border);
   font-style: italic;
 }
+
+/* ==========================================================================
+   Day 4 — Batch Detail, Approval, Execution styles
+   ========================================================================== */
+
+/* Generic panel card */
+.panel {
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.panel-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0 0 1rem 0;
+  color: #1a1a2e;
+}
+
+/* Sandbox banner */
+.sandbox-banner {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+  color: #664d03;
+}
+
+/* Batch header */
+.batch-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0.5rem 0;
+  flex-wrap: wrap;
+}
+
+.batch-id-display {
+  font-size: 0.75rem;
+  color: #6c757d;
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.breadcrumb {
+  margin-bottom: 0.25rem;
+}
+
+/* Analysis meta badges */
+.analysis-meta {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+/* Currency summary */
+.currency-summary {
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+.currency-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.currency-amount {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+/* Route sections */
+.route-section {
+  margin-top: 1.25rem;
+}
+
+.route-section-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  color: #495057;
+}
+
+/* Excluded routes */
+.excluded-route {
+  background: #fff5f5;
+  border: 1px solid #f5c6cb;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.excluded-route ul {
+  margin: 0.25rem 0 0 1.25rem;
+  padding: 0;
+  color: #721c24;
+}
+
+/* AI recommendation */
+.ai-recommendation {
+  background: #f0f4ff;
+  border: 1px solid #c5d3f5;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-top: 1rem;
+}
+
+.ai-recommendation.ai-fallback {
+  background: #fff9e6;
+  border-color: #ffc107;
+}
+
+.ai-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  color: #3d4a8a;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ai-fallback-reason {
+  font-size: 0.8rem;
+  color: #664d03;
+  margin-bottom: 0.5rem;
+}
+
+.ai-summary {
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.ai-factors {
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0.5rem 1.25rem;
+  padding: 0;
+  color: #495057;
+}
+
+.ai-disclaimer {
+  font-size: 0.75rem;
+  margin-top: 0.75rem;
+  font-style: italic;
+}
+
+.ml-2 {
+  margin-left: 0.5rem;
+}
+
+/* Approval form grid */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.approval-summary {
+  background: #e8f5e9;
+  border: 1px solid #a5d6a7;
+  border-radius: 6px;
+  padding: 0.65rem 1rem;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+/* Execution panel actions */
+.execution-actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+/* Small table variant */
+.obligations-table.small th,
+.obligations-table.small td {
+  font-size: 0.78rem;
+  padding: 0.4rem 0.6rem;
+}
+
+/* Badge color variants */
+.badge-simulated { background: #6c757d; color: #fff; }
+.badge-sandbox   { background: #0d6efd; color: #fff; }
+.badge-info      { background: #0dcaf0; color: #000; }
+.badge-warning   { background: #ffc107; color: #000; }
+.badge-success   { background: #198754; color: #fff; }
+.badge-error     { background: #dc3545; color: #fff; }
+
+/* Status badge variants for new statuses */
+.status-approved    { background: #d1e7dd; color: #0a3622; }
+.status-submitted   { background: #cfe2ff; color: #084298; }
+.status-processing  { background: #cfe2ff; color: #084298; }
+.status-completed   { background: #d1e7dd; color: #0a3622; }
+.status-partially_completed { background: #fff3cd; color: #664d03; }
+.status-failed      { background: #f8d7da; color: #58151c; }
+.status-unknown     { background: #e2e3e5; color: #41464b; }
+.status-analyzed    { background: #e2d9f3; color: #4a235a; }
+
+.text-muted { color: #6c757d; }

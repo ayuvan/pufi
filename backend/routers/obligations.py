@@ -56,17 +56,22 @@ def list_obligations(
     limit: int = Query(default=50, ge=1, le=200, description="Maximum records to return"),
     offset: int = Query(default=0, ge=0, description="Number of records to skip"),
     status: str = Query(default=None, description="Filter by status (e.g. DRAFT, VALIDATED)"),
+    business_id: str = Query(default=None, description="Filter by business ID (optional)"),
     db: Session = Depends(get_db),
 ) -> ObligationListResponse:
     """
     Returns obligations ordered by created_at descending.
 
     Query parameters:
-      limit  — max records per page (1–200, default 50)
-      offset — pagination offset (default 0)
-      status — optional status filter
+      limit       — max records per page (1–200, default 50)
+      offset      — pagination offset (default 0)
+      status      — optional status filter
+      business_id — optional business ID filter
     """
     query = db.query(Obligation).options(joinedload(Obligation.supplier))
+
+    if business_id:
+        query = query.filter(Obligation.business_id == business_id)
 
     if status:
         query = query.filter(Obligation.status == status.upper())

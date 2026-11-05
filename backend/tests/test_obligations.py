@@ -188,17 +188,19 @@ class TestHealthEndpoint:
 # ===========================================================================
 
 class TestObligationsListEndpoint:
+    BIZ = "BIZ-TEST-001"  # matches seeded_db fixture
+
     def test_obligations_list_returns_200(self, client, seeded_db):
-        resp = client.get("/api/v1/obligations")
+        resp = client.get(f"/api/v1/obligations?business_id={self.BIZ}")
         assert resp.status_code == 200
 
     def test_obligations_list_returns_seeded_count(self, client, seeded_db):
-        resp = client.get("/api/v1/obligations")
+        resp = client.get(f"/api/v1/obligations?business_id={self.BIZ}")
         body = resp.json()
         assert body["total"] == 2  # seeded_db inserts 2 obligations
 
     def test_obligations_response_shape(self, client, seeded_db):
-        body = client.get("/api/v1/obligations").json()
+        body = client.get(f"/api/v1/obligations?business_id={self.BIZ}").json()
         assert "items" in body
         assert "total" in body
         assert "limit" in body
@@ -208,48 +210,48 @@ class TestObligationsListEndpoint:
             assert field in item, f"Missing field: {field}"
 
     def test_obligations_status_filter_draft(self, client, seeded_db):
-        resp = client.get("/api/v1/obligations?status=DRAFT")
+        resp = client.get(f"/api/v1/obligations?business_id={self.BIZ}&status=DRAFT")
         body = resp.json()
         assert body["total"] == 1
         assert body["items"][0]["status"] == "DRAFT"
 
     def test_obligations_status_filter_validated(self, client, seeded_db):
-        resp = client.get("/api/v1/obligations?status=VALIDATED")
+        resp = client.get(f"/api/v1/obligations?business_id={self.BIZ}&status=VALIDATED")
         body = resp.json()
         assert body["total"] == 1
         assert body["items"][0]["status"] == "VALIDATED"
 
     def test_obligations_status_filter_nonexistent(self, client, seeded_db):
-        resp = client.get("/api/v1/obligations?status=CANCELLED")
+        resp = client.get(f"/api/v1/obligations?business_id={self.BIZ}&status=CANCELLED")
         body = resp.json()
         assert body["total"] == 0
         assert body["items"] == []
 
     def test_obligations_pagination_limit(self, client, seeded_db):
-        resp = client.get("/api/v1/obligations?limit=1")
+        resp = client.get(f"/api/v1/obligations?business_id={self.BIZ}&limit=1")
         body = resp.json()
         assert len(body["items"]) == 1
         assert body["total"] == 2  # total unchanged by limit
 
     def test_obligations_pagination_offset(self, client, seeded_db):
-        resp = client.get("/api/v1/obligations?limit=1&offset=1")
+        resp = client.get(f"/api/v1/obligations?business_id={self.BIZ}&limit=1&offset=1")
         body = resp.json()
         assert len(body["items"]) == 1
 
     def test_obligations_pagination_beyond_end(self, client, seeded_db):
-        resp = client.get("/api/v1/obligations?offset=100")
+        resp = client.get(f"/api/v1/obligations?business_id={self.BIZ}&offset=100")
         body = resp.json()
         assert len(body["items"]) == 0
         assert body["total"] == 2
 
     def test_obligations_includes_supplier_name(self, client, seeded_db):
-        body = client.get("/api/v1/obligations").json()
+        body = client.get(f"/api/v1/obligations?business_id={self.BIZ}").json()
         item = body["items"][0]
         assert "display_name" in item["supplier"]
         assert item["supplier"]["display_name"] != ""
 
     def test_obligations_response_includes_correlation_id(self, client, seeded_db):
-        body = client.get("/api/v1/obligations").json()
+        body = client.get(f"/api/v1/obligations?business_id={self.BIZ}").json()
         assert "correlation_id" in body
 
     def test_obligations_limit_too_large_rejected(self, client, seeded_db):

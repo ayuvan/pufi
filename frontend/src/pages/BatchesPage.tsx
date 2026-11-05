@@ -9,6 +9,14 @@ import {
 } from '../api/client'
 
 // -------------------------------------------------------------------------
+// Props
+// -------------------------------------------------------------------------
+
+interface BatchesPageProps {
+  onOpenBatchDetail?: (batchId: string) => void
+}
+
+// -------------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------------
 
@@ -30,7 +38,7 @@ function formatAmount(amount: string, currency: string): string {
 // Batch detail panel
 // -------------------------------------------------------------------------
 
-function BatchDetail({ batchId }: { batchId: string }) {
+function BatchDetail({ batchId, onOpenDetail }: { batchId: string; onOpenDetail?: (id: string) => void }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['batch', batchId],
     queryFn: () => fetchBatch(batchId),
@@ -81,7 +89,18 @@ function BatchDetail({ batchId }: { batchId: string }) {
 
       {data.status === 'DRAFT' && (
         <div className="alert alert-info">
-          ⓘ This batch is in DRAFT. Approval and submission are enabled on Day 4 (PayPal integration).
+          ⓘ This batch is in DRAFT.
+        </div>
+      )}
+
+      {onOpenDetail && (
+        <div className="import-actions">
+          <button
+            className="btn btn-primary"
+            onClick={() => onOpenDetail(batchId)}
+          >
+            View Approval &amp; Execution →
+          </button>
         </div>
       )}
     </div>
@@ -266,7 +285,7 @@ function CreateBatchForm({ onCreated }: { onCreated: (b: Batch) => void }) {
 // Main page
 // -------------------------------------------------------------------------
 
-export default function BatchesPage() {
+export default function BatchesPage({ onOpenBatchDetail }: BatchesPageProps = {}) {
   const [createdBatch, setCreatedBatch] = useState<Batch | null>(null)
 
   if (createdBatch) {
@@ -286,7 +305,7 @@ export default function BatchesPage() {
           {createdBatch.obligation_count} obligation{createdBatch.obligation_count !== 1 ? 's' : ''}.
         </div>
 
-        <BatchDetail batchId={createdBatch.id} />
+        <BatchDetail batchId={createdBatch.id} onOpenDetail={onOpenBatchDetail} />
       </div>
     )
   }

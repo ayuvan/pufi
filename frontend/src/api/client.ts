@@ -243,3 +243,119 @@ export const fetchBatchAnalysis = (
     `/batches/${batchId}/analyze?strategy=${strategy}`,
     { method: 'POST' }
   )
+
+// -------------------------------------------------------------------------
+// Day 4: Approval & execution types
+// -------------------------------------------------------------------------
+
+export interface ApproveRequest {
+  approver_id: string
+  routing_strategy: string
+  selected_provider_code: string
+  confirmed_total_amount: string
+  confirmed_currency: string
+  confirmed_recipient_count: number
+}
+
+export interface ApprovalResponse {
+  success: boolean
+  batch_id: string
+  status: string
+  approved_by: string
+  approved_at: string
+  selected_provider_code: string
+  routing_strategy: string
+  approved_total_amount: string
+  approved_currency: string
+  approved_recipient_count: number
+  error_message: string | null
+}
+
+export interface SubmissionResponse {
+  success: boolean
+  batch_id: string
+  sender_batch_id: string
+  paypal_payout_batch_id: string | null
+  paypal_batch_status: string | null
+  submission_status: string
+  submitted_at: string
+  is_simulated: boolean
+  paypal_configured: boolean
+  error_message: string | null
+  disclaimer: string
+}
+
+export interface StatusRefreshResponse {
+  success: boolean
+  batch_id: string
+  batch_status: string
+  paypal_batch_status: string | null
+  items_checked: number
+  completed: number
+  failed: number
+  pending: number
+  unknown: number
+  refreshed_at: string
+  error_message: string | null
+  disclaimer: string
+}
+
+export interface PaymentInstructionOut {
+  id: string
+  batch_id: string
+  obligation_id: string
+  provider_code: string
+  amount: string
+  currency: string
+  status: string
+  settlement_evidence: string
+  idempotency_key: string
+  sender_item_id: string
+  paypal_payout_item_id: string | null
+  paypal_transaction_id: string | null
+  paypal_item_status: string | null
+  error_message: string | null
+  created_at: string
+  updated_at: string | null
+}
+
+export interface AuditEventOut {
+  id: string
+  entity_type: string
+  entity_id: string
+  event_type: string
+  actor: string
+  correlation_id: string | null
+  details_redacted: string | null
+  created_at: string
+}
+
+// -------------------------------------------------------------------------
+// Day 4: Endpoints
+// -------------------------------------------------------------------------
+
+/** Approve a batch for PayPal Sandbox submission. */
+export const approveBatch = (
+  batchId: string,
+  body: ApproveRequest
+): Promise<ApprovalResponse> =>
+  apiFetch<ApprovalResponse>(`/batches/${batchId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+
+/** Submit an approved batch to PayPal Sandbox. */
+export const submitBatch = (batchId: string): Promise<SubmissionResponse> =>
+  apiFetch<SubmissionResponse>(`/batches/${batchId}/submit`, { method: 'POST' })
+
+/** Refresh batch and item statuses from PayPal. */
+export const refreshBatchStatus = (batchId: string): Promise<StatusRefreshResponse> =>
+  apiFetch<StatusRefreshResponse>(`/batches/${batchId}/refresh-status`, { method: 'POST' })
+
+/** Get payment instructions for a batch. */
+export const fetchInstructions = (batchId: string): Promise<PaymentInstructionOut[]> =>
+  apiFetch<PaymentInstructionOut[]>(`/batches/${batchId}/instructions`)
+
+/** Get audit events for a batch. */
+export const fetchAuditEvents = (batchId: string): Promise<AuditEventOut[]> =>
+  apiFetch<AuditEventOut[]>(`/batches/${batchId}/audit`)
