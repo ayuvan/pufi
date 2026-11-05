@@ -2,7 +2,7 @@
 PUFI — FastAPI application entry point.
 
 Registers:
-  - CORS middleware (permissive for local dev; tighten before any public deploy)
+  - CORS middleware (origins read from CORS_ORIGINS env var)
   - Correlation-ID middleware (every response carries X-Correlation-ID)
   - API routers under /api/v1
 
@@ -10,6 +10,8 @@ Database tables are created automatically on startup via SQLAlchemy
 metadata (Base.metadata.create_all). Alembic migrations take over
 for schema changes from Day 2 onward.
 """
+import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 
@@ -17,9 +19,15 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from models.db import Base, engine
+from models.db import Base, engine  # load_dotenv() runs inside models/db.py
 from models import entities  # noqa: F401 — registers ORM classes with Base
 from routers import health, obligations
+
+logger = logging.getLogger("pufi")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -53,14 +61,14 @@ app = FastAPI(
 # Middleware
 # ---------------------------------------------------------------------------
 
-# CORS — allow the Vite dev server and any localhost port during development.
-# Replace with explicit origin list before any public deployment.
+# CORS — origins read from CORS_ORIGINS env var; falls back to localhost dev defaults.
+# Replace with an explicit production origin list before any public deployment.
+_cors_raw = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
+_cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -88,7 +96,8 @@ async def correlation_id_middleware(request: Request, call_next):
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     correlation_id = getattr(request.state, "correlation_id", "unknown")
-    # Log without exposing internals — structured logging wired in later milestones
+    # H-3 fix: log the full traceback server-side; never expose internals in the response.
+    logger.exception("Unhandled exception [corr=%s]: %s", correlation_id, exc)
     return JSONResponse(
         status_code=500,
         content={

@@ -17,6 +17,7 @@ IMPORTANT: This seed script is for development and demo use only.
 import json
 import sys
 import os
+import hashlib
 from decimal import Decimal
 from datetime import date
 
@@ -42,21 +43,8 @@ VALID_ISO_4217 = {
 }
 
 
-def _determine_initial_status(ob: dict, supplier_map: dict[str, Supplier]) -> str:
-    """
-    Assign an initial status to seeded obligations.
-
-    Valid obligations get DRAFT (validation service runs on Day 2).
-    Duplicates and clearly invalid records are pre-flagged for demo clarity.
-    """
-    # Zero/tiny amount
-    if Decimal(ob["amount"]) <= Decimal("0.00"):
-        return "DRAFT"
-
-    # Unknown currency
-    if ob["currency"] not in VALID_ISO_4217:
-        return "DRAFT"
-
+def _initial_status() -> str:
+    """All seeded obligations start as DRAFT.  Validation runs on Day 2."""
     return "DRAFT"
 
 
@@ -97,7 +85,6 @@ def seed() -> None:
 
         # For seed purposes use the first (and only) business
         default_business_id = list(business_map.keys())[0]
-        default_business = business_map[default_business_id]
 
         # -------------------------------------------------------------------
         # Insert suppliers
@@ -151,7 +138,6 @@ def seed() -> None:
             seen_keys.add(business_key)
 
             # Compute a simple source_hash (SHA-256 of normalized key fields)
-            import hashlib
             hash_input = f"{ob['supplier_reference']}|{ob['invoice_reference']}|{ob['amount']}|{ob['currency']}|{ob['due_at']}"
             source_hash = hashlib.sha256(hash_input.encode()).hexdigest()
 
@@ -162,7 +148,7 @@ def seed() -> None:
                 amount=Decimal(ob["amount"]),
                 currency=ob["currency"],
                 due_at=date.fromisoformat(ob["due_at"]),
-                status=_determine_initial_status(ob, supplier_map),
+                status=_initial_status(),
                 source_hash=source_hash,
                 notes=ob.get("notes"),
             )

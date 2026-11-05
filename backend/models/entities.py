@@ -13,15 +13,14 @@ State machine for Obligation.status:
   READY → CLOSED | CANCELLED
 """
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone  # M-4: include timezone
 from decimal import Decimal
-from typing import List, Optional
 
 from sqlalchemy import (
     CheckConstraint, Column, Date, DateTime,
     ForeignKey, Numeric, String, Text, UniqueConstraint,
 )
-from sqlalchemy.orm import relationship, Mapped
+from sqlalchemy.orm import relationship  # L-3: removed unused Mapped
 
 from models.db import Base
 
@@ -32,7 +31,9 @@ def _new_uuid() -> str:
 
 
 def _utcnow() -> datetime:
-    return datetime.utcnow()
+    # M-4 fix: timezone-aware UTC — avoids DeprecationWarning in Python 3.12
+    # and prevents naive/aware comparison bugs with PostgreSQL.
+    return datetime.now(timezone.utc)
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +153,12 @@ class Obligation(Base):
         ),
         # Amount must be positive (zero and negative amounts are validation errors)
         CheckConstraint("amount > 0", name="ck_obligation_amount_positive"),
+        # H-2 fix: status must be a valid state-machine value.
+        # Prevents arbitrary strings from bypassing the approval workflow.
+        CheckConstraint(
+            "status IN ('DRAFT','VALIDATED','ON_HOLD','READY','CLOSED','CANCELLED')",
+            name="ck_obligation_status_valid",
+        ),
     )
 
     # Relationships

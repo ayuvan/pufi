@@ -41,11 +41,17 @@ function formatAmount(amount: string, currency: string): string {
   // Parse to float for display only — never use this for financial arithmetic.
   const num = parseFloat(amount)
   if (isNaN(num)) return `${amount} ${currency}`
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: currency || 'USD',
-    minimumFractionDigits: 2,
-  }).format(num)
+  // M-2 fix: Intl.NumberFormat throws RangeError for non-ISO currencies (e.g. 'ZZZ').
+  // Fall back to plain numeric display rather than crashing the table.
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency || 'USD',
+      minimumFractionDigits: 2,
+    }).format(num)
+  } catch {
+    return `${num.toFixed(2)} ${currency}`
+  }
 }
 
 // -------------------------------------------------------------------------
