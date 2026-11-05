@@ -1,5 +1,8 @@
 """
-PUFI — ORM entity definitions for Day 1 tables: Business, Supplier, Obligation.
+PUFI — ORM entity definitions.
+
+Day 1 tables: Business, Supplier, Obligation
+Day 2 tables: PaymentBatch, BatchObligation
 
 Money rules (enforced here and throughout the codebase):
   - Amount columns use NUMERIC(19, 4)   — never Float or Double.
@@ -11,6 +14,12 @@ State machine for Obligation.status:
   VALIDATED → READY | CANCELLED
   ON_HOLD → VALIDATED | CANCELLED
   READY → CLOSED | CANCELLED
+
+State machine for PaymentBatch.status:
+  DRAFT → PENDING_APPROVAL | CANCELLED
+  PENDING_APPROVAL → APPROVED | REJECTED
+  APPROVED → SUBMITTED | CANCELLED
+  SUBMITTED → COMPLETED | PARTIALLY_COMPLETED | FAILED
 """
 import uuid
 from datetime import datetime, date, timezone  # M-4: include timezone
@@ -18,7 +27,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     CheckConstraint, Column, Date, DateTime,
-    ForeignKey, Numeric, String, Text, UniqueConstraint,
+    ForeignKey, Numeric, String, Text, UniqueConstraint, Boolean,
 )
 from sqlalchemy.orm import relationship  # L-3: removed unused Mapped
 
@@ -170,3 +179,78 @@ class Obligation(Base):
             f"<Obligation id={self.id!r} invoice={self.invoice_reference!r} "
             f"amount={self.amount} {self.currency} status={self.status!r}>"
         )
+
+
+# ---------------------------------------------------------------------------
+# PaymentBatch  (Day 2)
+# ---------------------------------------------------------------------------
+
+class PaymentBatch(Base):
+    """
+    A named collection of validated obligations that will be submitted together
+    as a single payment run.
+
+    A batch must be explicitly approved before it can be submitted.  The AI
+    advisory layer may recommend approval but cannot approve autonomously.
+
+    Status machine (see module docstring for transitions).
+    """
+    __tablename__ = "payment_batches"
+
+    id: str = Column(String(36), primary_key=True, default=_new_uuid)
+    business_id: str = Column(String(36), ForeignKey("businesses.id"), nullable=False)
+
+    # Human-readable reference (e.g. "BATCH-2026-001")
+    batch_reference: str = Column(String(100), nullable=False)
+
+    status: str = Column(String(30), nullable=False, default="DRAFT")
+
+    # Who approved this batch (user identifier — Day 4 adds real auth)
+    approved_by: str = Column(String(255), nullable=True)
+    approved_at: datetime = Column(DateTime, nullable=True)
+
+    notes: str = Column(Text, nullable=True)
+
+    created_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("business_id", "batch_reference", name="uq_batch_business_ref"),
+        CheckConstraint(
+            "status IN ('DRAFT','PENDING_APPROVAL','APPROVED','REJECTED',"
+            "'SUBMITTED','COMPLETED','PARTIALLY_COMPLETED','FAILED','CANCELLED')",
+            name="ck_batch_status_valid",
+        ),
+    )
+
+    # Relationships
+    business: Business = relationship("Business")
+    batch_obligations: list = relationship("BatchObligation", back_populates="batch")
+
+    def __repr__(self) -> str:
+        return f"<PaymentBatch id={self.id!r} ref={self.batch_reference!r} status={self.status!r}>"
+
+
+# ---------------------------------------------------------------------------
+# BatchObligation  (Day 2) — junction table
+# ---------------------------------------------------------------------------
+
+class BatchObligation(Base):
+    """
+    Many-to-many join between PaymentBatch and Obligation.
+
+    An obligation may appear in at most one ACTIVE batch at a time.
+    The unique constraint on obligation_id enforces this.
+    """
+    __tablename__ = "batch_obligations"
+
+    batch_id: str = Column(String(36), ForeignKey("payment_batches.id"), primary_key=True)
+    obligation_id: str = Column(String(36), ForeignKey("obligations.id"), primary_key=True)
+
+    added_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
+
+    # Relationships
+    batch: PaymentBatch = relationship("PaymentBatch", back_populates="batch_obligations")
+    obligation: Obligation = relationship("Obligation")
+
+    def __repr__(self) -> str:
+        return f"<BatchObligation batch={self.batch_id!r} obligation={self.obligation_id!r}>"
