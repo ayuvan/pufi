@@ -147,7 +147,7 @@ cd backend ; .venv\Scripts\python seed.py
 # 2. Create the demo batch (prints actual batch ID — do NOT hardcode it)
 cd backend ; .venv\Scripts\python demo_seed.py
 # Example output:
-#   Batch ID : 1cc14a1c-aa96-4902-8a78-b987f932265e
+#   Batch ID : 4530b907-8887-40ca-b3b3-2ac841d16f56
 #   Batch Reference : DEMO-BATCH-DAY4
 
 # 3. Start backend

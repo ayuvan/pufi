@@ -194,7 +194,7 @@ function CreateBatchForm({ onCreated }: { onCreated: (b: Batch) => void }) {
               id="batch-notes"
               className="form-input"
               type="text"
-              placeholder="e.g. November payroll run"
+              placeholder="e.g. November supplier disbursement run"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />

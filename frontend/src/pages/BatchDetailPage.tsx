@@ -486,7 +486,23 @@ function ExecutionPanel({ batchId, batch }: { batchId: string; batch: Batch }) {
               )}
             </>
           ) : (
-            <>✗ Submission failed: {submitResult.error_message}</>
+            <div>
+              <p>
+                <strong>
+                  {submitResult.error_message?.includes('country') || submitResult.error_message?.includes('PAYOUT_NOT_AVAILABLE')
+                    ? 'BLOCKED — PAYPAL COUNTRY ELIGIBILITY'
+                    : '✗ Submission failed:'}
+                </strong>{' '}
+                {submitResult.error_message}
+              </p>
+              {submitResult.error_message?.includes('PAYOUT_NOT_AVAILABLE') && (
+                <p className="text-muted" style={{ fontSize: '0.82rem', marginTop: '0.4rem' }}>
+                  ℹ <strong>Why did this happen?</strong> PayPal Sandbox requires sender accounts to reside in
+                  a Payouts-eligible country. Indian PayPal accounts currently support receive/withdraw only.
+                  Retrying will not resolve account country eligibility; the audit trail records this provider outcome.
+                </p>
+              )}
+            </div>
           )}
           <p className="disclaimer">{submitResult.disclaimer}</p>
         </div>
