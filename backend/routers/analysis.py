@@ -26,7 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session, joinedload
 
 from models.db import get_db
-from models.entities import AiRecommendation, BatchObligation, Obligation, PaymentBatch, Supplier
+from models.entities import AiRecommendation, AuditEvent, BatchObligation, Obligation, PaymentBatch, Supplier
 from schemas.analysis import (
     AiRecommendationOut,
     BatchAnalysisResponse,
@@ -315,6 +315,20 @@ def analyze_batch_endpoint(
         )
         db.add(ai_rec)
         db.flush()  # flush into session; test harness rolls back, production commits via middleware
+        # Write audit event for analysis completion
+        db.add(AuditEvent(
+            entity_type="BATCH",
+            entity_id=batch_id,
+            event_type="ANALYSIS_COMPLETED",
+            actor="SYSTEM",
+            correlation_id=correlation_id,
+            details_redacted=json.dumps({
+                "total_obligations": total_obligations,
+                "eligible_providers": eligible_route_codes,
+                "fallback_used": ai_result.fallback_used,
+                "model_name": ai_result.model_name,
+            }),
+        ))
     except Exception as exc:
         # Persistence failure must not break the analysis response
         logger.warning("Failed to persist AI recommendation: %s", exc)

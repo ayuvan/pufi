@@ -19,6 +19,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
 
+from dependencies import require_api_key
 from models.db import get_db
 from models.entities import AuditEvent, Obligation, PaymentInstruction, ProviderSubmission
 from schemas.execution import (
@@ -57,6 +58,7 @@ def approve_batch_endpoint(
     body: ApproveRequest,
     request: Request,
     db: Session = Depends(get_db),
+    _auth: None = Depends(require_api_key),
 ) -> ApprovalResponse:
     correlation_id = getattr(request.state, "correlation_id", str(uuid.uuid4()))
 
@@ -117,6 +119,7 @@ def submit_batch_endpoint(
     batch_id: str,
     request: Request,
     db: Session = Depends(get_db),
+    _auth: None = Depends(require_api_key),
 ) -> SubmissionResponse:
     correlation_id = getattr(request.state, "correlation_id", str(uuid.uuid4()))
 

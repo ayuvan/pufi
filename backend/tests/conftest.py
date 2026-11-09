@@ -20,6 +20,9 @@ if _BACKEND not in sys.path:
 
 # Point the app at the in-memory test DB BEFORE importing main.py
 os.environ["DATABASE_URL"] = "sqlite://"
+# Unset AI keys during test runs so tests don't make real outbound network calls
+os.environ.pop("AI_API_KEY", None)
+os.environ.pop("GEMINI_API_KEY", None)
 
 import pytest
 import anyio
@@ -171,6 +174,11 @@ def client(db):
 
     app.dependency_overrides[get_db] = _override_db
 
+    # Ensure AI keys are cleared from environment while test client is running
+    # to prevent real outbound AI calls from hanging inside the test runner.
+    old_ai_key = os.environ.pop("AI_API_KEY", None)
+    old_gemini_key = os.environ.pop("GEMINI_API_KEY", None)
+
     # httpx.ASGITransport is async-only in httpx>=0.23; use starlette TestClient instead.
     # The middleware deadlock is avoided because main.py uses @app.middleware("http")
     # decorator style (not BaseHTTPMiddleware subclass), which is safe with TestClient.
@@ -179,6 +187,11 @@ def client(db):
     from starlette.testclient import TestClient as _TestClient
     with _TestClient(app, raise_server_exceptions=True) as c:
         yield c
+
+    if old_ai_key is not None:
+        os.environ["AI_API_KEY"] = old_ai_key
+    if old_gemini_key is not None:
+        os.environ["GEMINI_API_KEY"] = old_gemini_key
 
     app.dependency_overrides.clear()
 

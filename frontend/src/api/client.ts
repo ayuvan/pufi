@@ -251,24 +251,25 @@ export const fetchBatchAnalysis = (
 export interface ApproveRequest {
   approver_id: string
   routing_strategy: string
-  selected_provider_code: string
-  confirmed_total_amount: string
+  /** Must match backend field name: selected_provider */
+  selected_provider: string
+  /** Must match backend field name: confirmed_total (Decimal string) */
+  confirmed_total: string
   confirmed_currency: string
-  confirmed_recipient_count: number
 }
 
 export interface ApprovalResponse {
-  success: boolean
   batch_id: string
   status: string
   approved_by: string
   approved_at: string
-  selected_provider_code: string
-  routing_strategy: string
-  approved_total_amount: string
-  approved_currency: string
+  selected_provider: string
+  confirmed_total: string
+  confirmed_currency: string
   approved_recipient_count: number
-  error_message: string | null
+  routing_strategy: string
+  analysis_snapshot_id: string | null
+  message: string
 }
 
 export interface SubmissionResponse {

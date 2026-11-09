@@ -267,18 +267,15 @@ function ApprovalPanel({
       const req: ApproveRequest = {
         approver_id: approverId.trim() || 'DEMO-APPROVER-001',
         routing_strategy: strategy,
-        selected_provider_code: selectedProvider,
-        confirmed_total_amount: primaryAmount,
+        selected_provider: selectedProvider,
+        confirmed_total: primaryAmount,
         confirmed_currency: primaryCurrency,
-        confirmed_recipient_count: batch.obligation_count,
       }
       return approveBatch(batchId, req)
     },
-    onSuccess: (resp) => {
-      if (resp.success) {
-        queryClient.invalidateQueries({ queryKey: ['batch', batchId] })
-        onApproved()
-      }
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['batch', batchId] })
+      onApproved()
     },
   })
 

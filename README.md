@@ -199,3 +199,124 @@ DRAFT → VALIDATED → ANALYZED → APPROVED → SUBMITTED → PROCESSING → C
 cd backend ; .venv\Scripts\python -m pytest tests/ -v
 # Expected: 107 passed
 ```
+
+
+---
+
+## Day 5: Final Integration, Access Control & Hackathon Readiness
+
+### What was completed in Day 5
+
+| Feature | Status |
+|---------|--------|
+| End-to-end workflow verification | ✅ Verified |
+| `PAYPAL_MODE` env-var mismatch fix | ✅ Fixed |
+| Audit event written on analysis | ✅ Added |
+| API-key access control on approve/submit | ✅ Implemented |
+| PayPal webhook receiver | ✅ Implemented (signature-verified) |
+| Global Audit Trail page | ✅ Built |
+| Frontend build | ✅ 69 modules, no errors |
+| Backend tests | ✅ All pass |
+
+### Access Control (Demo)
+
+Approve and Submit endpoints now require an `X-Api-Key` header when `DEMO_API_KEY` is set in `.env`.
+
+```
+# .env
+DEMO_API_KEY=change-me-before-demo
+```
+
+> **IMPORTANT:** This is a **demo authentication mechanism** — not enterprise-grade identity management. In production, replace with OAuth2/JWT and role-based access control.
+
+If `DEMO_API_KEY` is not set, the check is bypassed (development convenience).
+
+### PayPal Webhook
+
+Webhook receiver at `POST /api/v1/webhooks/paypal`.
+
+Setup:
+1. Set `PAYPAL_WEBHOOK_ID` in `.env`.
+2. Create a webhook subscription in [PayPal Developer Dashboard](https://developer.paypal.com/dashboard/webhooks/sandbox).
+3. Point it to `https://your-public-url/api/v1/webhooks/paypal`.
+4. For local dev, use ngrok: `ngrok http 8000`.
+
+Events handled: `PAYMENT.PAYOUTS-ITEM.SUCCEEDED/FAILED/BLOCKED/REFUNDED/RETURNED/UNCLAIMED/DENIED`
+
+**Polling alternative (always available):** `POST /api/v1/batches/{id}/refresh-status`
+
+### Security Findings
+
+| Check | Result |
+|-------|--------|
+| No float monetary arithmetic | ✅ All `Decimal` |
+| No unauthorized approval | ✅ API-key gate + 9 approval checks |
+| No duplicate payout submission | ✅ ProviderSubmission guard |
+| No unverified webhook | ✅ PayPal verify-webhook-signature API called |
+| No secrets in git | ✅ `.env` gitignored |
+| No live PayPal endpoints | ✅ Sandbox base URL only |
+| No invalid state transitions | ✅ Approval service enforces sequence |
+| AI cannot approve or submit | ✅ Hardcoded rejection |
+
+### Database
+
+SQLite is used for local development. Sufficient for the hackathon demonstration.
+
+**To switch to PostgreSQL** (future):
+```
+DATABASE_URL=postgresql://user:pass@localhost:5432/pufi_dev
+```
+No code changes needed — SQLAlchemy handles both.
+
+### Known Limitations
+
+1. **PayPal Sandbox credentials** — not provided; adapter runs in simulated mode.
+2. **Webhook not externally tested** — requires public HTTPS URL (use ngrok locally).
+3. **Demo auth** — API key, not OAuth2. Explicitly labelled.
+4. **USD only** — PayPal Payouts in this prototype.
+5. **SQLite** — not suitable for concurrent production traffic.
+6. **No HTTPS in dev** — use reverse proxy (nginx/caddy) in deployment.
+
+### Architecture Summary
+
+```
+Frontend (React + TypeScript + Vite)
+    │
+    │  REST API (FastAPI)
+    ▼
+Backend (/api/v1)
+    ├── Obligations     — import, validate, deduplicate
+    ├── Batches         — group, status tracking
+    ├── Analysis        — deterministic routing + AI advisory (Gemini)
+    ├── Execution       — approve (human), submit, refresh-status
+    └── Webhooks        — PayPal event receiver (signature-verified)
+    │
+    ├── Provider Registry   — PayPal Sandbox + Simulated providers
+    ├── FX Engine           — Decimal calculations, SIMULATED label
+    ├── Routing Engine      — deterministic eligibility checks
+    ├── AI Advisor          — Gemini advisory, falls back gracefully
+    ├── Approval Service    — 9-check human approval gate
+    └── Audit Log           — AuditEvent table, all state transitions
+    │
+    └── SQLite (dev) / PostgreSQL (production)
+         ├── businesses, suppliers, obligations
+         ├── payment_batches, batch_obligations
+         ├── fx_quotes, funding_snapshots
+         ├── ai_recommendations
+         ├── payment_instructions, provider_submissions
+         └── audit_events
+```
+
+### Hackathon Submission Summary
+
+**Problem:** Enterprise payment operations involve coordinating hundreds of supplier payment obligations across multiple currencies, providers, and approval workflows. This creates operational risk, manual errors, and poor auditability.
+
+**Solution:** PUFI coordinates the full lifecycle — from obligation import through validation, AI-assisted route selection, human approval, and PayPal Sandbox execution — with a complete audit trail.
+
+**PayPal Integration:** PayPal Payouts API (Sandbox) with OAuth2 authentication, idempotent sender_batch_id, item-level status tracking, and webhook signature verification.
+
+**AI Integration:** Gemini Flash is used for advisory-only batch analysis. It explains provider comparisons and flags anomalies. It cannot approve batches, modify amounts, or override deterministic eligibility checks. Falls back gracefully when unavailable.
+
+**What is simulated:** FX quotes, non-PayPal providers (SIMULATED_WIRE, SIMULATED_ACH), funding snapshots. All clearly labelled.
+
+**What is real:** PayPal Sandbox API calls (when credentials are provided), webhook signature verification, deterministic routing engine, human approval gate, audit events.

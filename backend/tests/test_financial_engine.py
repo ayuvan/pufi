@@ -655,9 +655,12 @@ class TestAiAdvisor:
             json.loads(malformed)
 
         # Verify ai_advisor handles this gracefully by checking fallback logic
-        # (The actual network call is not made — API key not set → fallback)
-        result, _ = self._call_analyze()
-        assert result.fallback_used is True  # no key → fallback
+        # Clear AI_API_KEY so analyze_batch falls back immediately without network calls
+        with patch.dict(os.environ, {}, clear=False):
+            env = {k: v for k, v in os.environ.items() if k not in ("AI_API_KEY", "GEMINI_API_KEY")}
+            with patch.dict(os.environ, env, clear=True):
+                result, _ = self._call_analyze()
+                assert result.fallback_used is True  # no key → fallback
 
     def test_hash_is_deterministic(self):
         """Same context must always produce the same input hash."""

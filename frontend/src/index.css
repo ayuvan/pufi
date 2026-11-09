@@ -979,3 +979,51 @@
 .status-analyzed    { background: #e2d9f3; color: #4a235a; }
 
 .text-muted { color: #6c757d; }
+
+/* ==========================================================================
+   Day 5 — Audit Trail styles
+   ========================================================================== */
+
+.audit-row td { vertical-align: top; }
+
+.audit-time {
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: #6c757d;
+}
+
+.audit-event-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.audit-approved  .audit-event-label,
+.audit-approved  { background: rgba(25,135,84,0.07); }
+.audit-submitted .audit-event-label,
+.audit-submitted { background: rgba(13,110,253,0.07); }
+.audit-failed    .audit-event-label,
+.audit-failed    { background: rgba(220,53,69,0.07); }
+.audit-info      .audit-event-label { background: rgba(13,202,240,0.07); }
+.audit-created   .audit-event-label { background: rgba(108,117,125,0.07); }
+
+.audit-entity { font-size: 0.78rem; color: #6c757d; margin-right: 0.25rem; }
+.audit-id     { font-size: 0.72rem; color: #495057; background: #f1f3f5; padding: 0.1rem 0.3rem; border-radius: 3px; }
+
+.audit-details {
+  font-size: 0.72rem;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 0.5rem;
+  max-width: 400px;
+  overflow: auto;
+  margin-top: 0.25rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.audit-batch-header { font-size: 0.9rem; }

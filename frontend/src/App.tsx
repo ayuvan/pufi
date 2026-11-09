@@ -4,9 +4,10 @@ import ImportPage from './pages/ImportPage'
 import BatchesPage from './pages/BatchesPage'
 import BatchDetailPage from './pages/BatchDetailPage'
 import AnalysisPage from './pages/AnalysisPage'
+import AuditPage from './pages/AuditPage'
 import './App.css'
 
-type Page = 'obligations' | 'import' | 'batches' | 'analysis'
+type Page = 'obligations' | 'import' | 'batches' | 'analysis' | 'audit'
 
 function App() {
   const [page, setPage] = useState<Page>('obligations')
@@ -23,7 +24,7 @@ function App() {
         setPage('batches')
         return
       }
-      if (['obligations', 'import', 'batches', 'analysis'].includes(hash)) {
+      if (['obligations', 'import', 'batches', 'analysis', 'audit'].includes(hash)) {
         setPage(hash as Page)
         setBatchDetailId(null)
       }
@@ -85,8 +86,11 @@ function App() {
         >
           Analysis
         </button>
-        <button className="nav-link disabled" aria-disabled="true" disabled>
-          Audit (Day 5)
+        <button
+          className={`nav-link ${page === 'audit' ? 'active' : ''}`}
+          onClick={() => navigate('audit')}
+        >
+          Audit Trail
         </button>
       </nav>
 
@@ -106,6 +110,7 @@ function App() {
           />
         )}
         {page === 'analysis' && <AnalysisPage />}
+        {page === 'audit' && <AuditPage />}
       </main>
 
       <footer className="app-footer">
