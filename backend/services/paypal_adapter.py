@@ -25,6 +25,10 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 logger = logging.getLogger("pufi.paypal_adapter")
 
 # ---------------------------------------------------------------------------

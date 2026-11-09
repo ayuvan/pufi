@@ -160,7 +160,18 @@ def approve_batch(
         rec_data = {}
 
     # The recommendation JSON stores the eligible route codes from deterministic engine
-    eligible_codes: list[str] = rec_data.get("evidence_fields", {}).get("eligible_route_codes", [])
+    raw_evidence = rec_data.get("evidence_fields")
+    if isinstance(raw_evidence, dict):
+        eligible_codes = raw_evidence.get("eligible_route_codes", [])
+    elif isinstance(raw_evidence, list):
+        eligible_codes = raw_evidence
+    else:
+        eligible_codes = []
+
+    # Also check if top-level recommendation or fallback provided eligible route
+    if not eligible_codes and rec_data.get("recommended_route"):
+        eligible_codes = [rec_data["recommended_route"]]
+
     if eligible_codes and selected_provider not in eligible_codes:
         return _fail(
             "PROVIDER_NOT_ELIGIBLE",

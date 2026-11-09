@@ -394,7 +394,10 @@ def _run_analysis(batch_id: str, db) -> None:
             "reasoning_factors": ai_result.reasoning_factors,
             "warnings": ai_result.warnings,
             "requires_human_review": ai_result.requires_human_review,
-            "evidence_fields": ai_result.evidence_fields,
+            "evidence_fields": {
+                "eligible_route_codes": eligible_codes,
+                "raw_fields": ai_result.evidence_fields,
+            },
             "fallback_used": ai_result.fallback_used,
             "fallback_reason": ai_result.fallback_reason,
         }, default=str),
