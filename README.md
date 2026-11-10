@@ -1,17 +1,14 @@
 # PUFI --- Enterprise Payment Coordination Infrastructure
 
-> Hackathon prototype \| PayPal Developer Platform + AI
+> 🏆 Hackathon Submission · PayPal Developer Platform + Google Gemini AI
 
-PUFI is a prototype enterprise payment-coordination layer. It helps a
-business organize payment obligations, validate payment instructions,
-compare eligible provider routes, model foreign-exchange costs, submit
-supported payment operations through PayPal Sandbox, and reconcile
-provider responses against an internal audit ledger.
+PUFI is an intelligent enterprise payment-coordination web application. It ingests bulk supplier payment obligations, validates and deduplicates them, deterministically evaluates fee models and FX spreads across payment rails, provides explainable AI decision-support via Google Gemini Flash, and enforces strict human-in-the-loop authorization before dispatching Sandbox disbursements through PayPal.
 
-PUFI is **not a bank, wallet, money transmitter, settlement network, or
-replacement for PayPal**. It does not hold customer funds. The hackathon
-build uses PayPal Sandbox and clearly labelled simulated providers and
-settlement records.
+PUFI is **not a bank, wallet, money transmitter, or replacement for PayPal**. It does not hold customer funds. The hackathon prototype uses PayPal Sandbox and clearly labelled simulated providers.
+
+> **GitHub Repository:** https://github.com/ayuvan/pufi  
+> **Demo Video:** *(YouTube link — see submission form)*  
+> **License:** MIT
 
 ## Hackathon fit
 
@@ -72,26 +69,65 @@ PUFI/
     └── proposal_requirements.md
 ```
 
-## Local development
+## Quick Start (for Judges)
 
-Exact commands will be added after the first implementation milestone
-establishes the package manager, database approach, and environment
-configuration.
+### Prerequisites
+- Python 3.11+ and Git
+- Node.js 18+ with npm or pnpm
 
-General sequence: 1. Install supported Python and Node.js versions. 2.
-Copy `.env.example` to `.env` and fill only the required local values.
-3. Start the backend. 4. Start the frontend. 5. Load synthetic supplier
-obligations. 6. Run the deterministic simulation before connecting
-PayPal Sandbox.
+### 1. Clone
+```bash
+git clone https://github.com/ayuvan/pufi.git
+cd pufi
+```
 
-Never commit `.env`, API secrets, access tokens, private keys, or real
-customer data.
+### 2. Backend
+```bash
+cd backend
+python -m venv .venv
 
-## Current status
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
 
-This repository is a documentation-first project. No production
-integration is claimed. The implementation plan identifies what must be
-built and tested before any feature is described as complete.
+pip install -r requirements.txt
+
+# Seed demo data (13 obligations + pre-approved demo batch):
+python demo_seed.py
+
+# Start API server:
+uvicorn main:app --reload
+```
+Backend runs at **http://localhost:8000** · Swagger docs at **http://localhost:8000/docs**
+
+### 3. Frontend
+```bash
+# New terminal:
+cd frontend
+npm install
+npm run dev
+```
+Frontend runs at **http://localhost:5173**
+
+### 4. (Optional) Run the full automated test suite
+```bash
+cd backend
+pytest tests/ -v
+# Expected: 114 tests passing
+```
+
+### 5. Demo workflow
+1. Open **http://localhost:5173**
+2. Navigate to **Batches** — the demo batch `DEMO-BATCH-DAY4` is pre-seeded.
+3. Click the batch → **Run Financial Analysis** → review fee comparison and Gemini AI advisory.
+4. Click **Approve** → fill in the confirmation form.
+5. Click **Submit to PayPal Sandbox** (requires your PayPal Sandbox credentials in `backend/.env`).
+6. View the **Audit Trail** tab for immutable event history.
+
+> Without PayPal credentials the system runs in clearly labelled **SIMULATED** mode.
+
+Never commit `.env`, API secrets, access tokens, private keys, or real customer data.
 
 ## Important terminology
 
@@ -197,7 +233,7 @@ DRAFT → VALIDATED → ANALYZED → APPROVED → SUBMITTED → PROCESSING → C
 
 ```powershell
 cd backend ; .venv\Scripts\python -m pytest tests/ -v
-# Expected: 107 passed
+# Expected: 114 passed
 ```
 
 
