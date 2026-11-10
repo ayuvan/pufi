@@ -113,9 +113,6 @@ export default function AuditPage() {
   const [batchIdInput, setBatchIdInput] = useState('')
   const [queriedId, setQueriedId] = useState<string | null>(null)
 
-  // Well-known demo batch from seed
-  const DEMO_BATCH_ID = ''  // populated by user or via seed output
-
   function handleSearch() {
     const id = batchIdInput.trim()
     if (id) setQueriedId(id)

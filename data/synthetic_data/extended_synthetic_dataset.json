@@ -1,0 +1,1789 @@
+{
+  "_metadata": {
+    "label": "SYNTHETIC",
+    "seed": 42,
+    "generated_at": "2026-11-10T17:42:25.677758+00:00",
+    "description": "PUFI extended synthetic dataset for reliability, validation, and load testing.",
+    "counts": {
+      "valid": 100,
+      "duplicate": 20,
+      "invalid": 15,
+      "international": 20,
+      "large": 10,
+      "incomplete": 10,
+      "total_obligations": 175
+    }
+  },
+  "business": {
+    "id": "biz-synth-001",
+    "display_name": "[SYNTHETIC] Nexus Global Enterprises Ltd"
+  },
+  "suppliers": [
+    {
+      "id": "sup-synth-dom-001",
+      "external_reference": "SUP-DOM-001",
+      "display_name": "[SYNTHETIC] Acme Logistics Group 1",
+      "country_code": "US",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "finance.dom1@synthetic-acme.example",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-synth-dom-002",
+      "external_reference": "SUP-DOM-002",
+      "display_name": "[SYNTHETIC] Acme Logistics Group 2",
+      "country_code": "US",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "finance.dom2@synthetic-acme.example",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-synth-dom-003",
+      "external_reference": "SUP-DOM-003",
+      "display_name": "[SYNTHETIC] Acme Logistics Group 3",
+      "country_code": "US",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "finance.dom3@synthetic-acme.example",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-synth-dom-004",
+      "external_reference": "SUP-DOM-004",
+      "display_name": "[SYNTHETIC] Acme Logistics Group 4",
+      "country_code": "US",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "finance.dom4@synthetic-acme.example",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-synth-dom-005",
+      "external_reference": "SUP-DOM-005",
+      "display_name": "[SYNTHETIC] Acme Logistics Group 5",
+      "country_code": "US",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "finance.dom5@synthetic-acme.example",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-synth-dom-006",
+      "external_reference": "SUP-DOM-006",
+      "display_name": "[SYNTHETIC] Acme Logistics Group 6",
+      "country_code": "US",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "finance.dom6@synthetic-acme.example",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-synth-dom-007",
+      "external_reference": "SUP-DOM-007",
+      "display_name": "[SYNTHETIC] Acme Logistics Group 7",
+      "country_code": "US",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "finance.dom7@synthetic-acme.example",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-synth-dom-008",
+      "external_reference": "SUP-DOM-008",
+      "display_name": "[SYNTHETIC] Acme Logistics Group 8",
+      "country_code": "US",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "finance.dom8@synthetic-acme.example",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-synth-dom-009",
+      "external_reference": "SUP-DOM-009",
+      "display_name": "[SYNTHETIC] Acme Logistics Group 9",
+      "country_code": "US",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "finance.dom9@synthetic-acme.example",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-synth-dom-010",
+      "external_reference": "SUP-DOM-010",
+      "display_name": "[SYNTHETIC] Acme Logistics Group 10",
+      "country_code": "US",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "finance.dom10@synthetic-acme.example",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-synth-int-001",
+      "external_reference": "SUP-INT-001",
+      "display_name": "[SYNTHETIC] International Partner DE GmbH",
+      "country_code": "DE",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "pay.de@synthetic-global.example",
+      "preferred_currency": "EUR"
+    },
+    {
+      "id": "sup-synth-int-002",
+      "external_reference": "SUP-INT-002",
+      "display_name": "[SYNTHETIC] International Partner GB Ltd",
+      "country_code": "GB",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "pay.gb@synthetic-global.example",
+      "preferred_currency": "GBP"
+    },
+    {
+      "id": "sup-synth-int-003",
+      "external_reference": "SUP-INT-003",
+      "display_name": "[SYNTHETIC] International Partner JP Corp",
+      "country_code": "JP",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "pay.jp@synthetic-global.example",
+      "preferred_currency": "JPY"
+    },
+    {
+      "id": "sup-synth-int-004",
+      "external_reference": "SUP-INT-004",
+      "display_name": "[SYNTHETIC] International Partner CA Inc",
+      "country_code": "CA",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "pay.ca@synthetic-global.example",
+      "preferred_currency": "CAD"
+    },
+    {
+      "id": "sup-synth-int-005",
+      "external_reference": "SUP-INT-005",
+      "display_name": "[SYNTHETIC] International Partner AU Pty",
+      "country_code": "AU",
+      "recipient_reference_type": "EMAIL",
+      "recipient_reference_masked": "pay.au@synthetic-global.example",
+      "preferred_currency": "AUD"
+    },
+    {
+      "id": "sup-synth-inc-001",
+      "external_reference": "SUP-INC-001",
+      "display_name": "[SYNTHETIC] Incomplete Supplier 1",
+      "country_code": "US",
+      "recipient_reference_type": "NONE",
+      "recipient_reference_masked": "UNCONFIGURED",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-synth-inc-002",
+      "external_reference": "SUP-INC-002",
+      "display_name": "[SYNTHETIC] Incomplete Supplier 2",
+      "country_code": "US",
+      "recipient_reference_type": "NONE",
+      "recipient_reference_masked": "UNCONFIGURED",
+      "preferred_currency": "USD"
+    },
+    {
+      "id": "sup-synth-inc-003",
+      "external_reference": "SUP-INC-003",
+      "display_name": "[SYNTHETIC] Incomplete Supplier 3",
+      "country_code": "US",
+      "recipient_reference_type": "NONE",
+      "recipient_reference_masked": "UNCONFIGURED",
+      "preferred_currency": "USD"
+    }
+  ],
+  "obligations": {
+    "valid": [
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-VAL-0001",
+        "amount": "9364.12",
+        "currency": "USD",
+        "due_at": "2026-11-17",
+        "notes": "[SYNTHETIC] Valid operational invoice #0001"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-VAL-0002",
+        "amount": "23096.13",
+        "currency": "USD",
+        "due_at": "2026-12-01",
+        "notes": "[SYNTHETIC] Valid operational invoice #0002"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-VAL-0003",
+        "amount": "18749.27",
+        "currency": "USD",
+        "due_at": "2026-11-24",
+        "notes": "[SYNTHETIC] Valid operational invoice #0003"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-VAL-0004",
+        "amount": "8622.91",
+        "currency": "USD",
+        "due_at": "2026-12-29",
+        "notes": "[SYNTHETIC] Valid operational invoice #0004"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-VAL-0005",
+        "amount": "45773.66",
+        "currency": "USD",
+        "due_at": "2026-11-21",
+        "notes": "[SYNTHETIC] Valid operational invoice #0005"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-006",
+        "invoice_reference": "INV-SYNTH-VAL-0006",
+        "amount": "35418.36",
+        "currency": "USD",
+        "due_at": "2026-11-18",
+        "notes": "[SYNTHETIC] Valid operational invoice #0006"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-007",
+        "invoice_reference": "INV-SYNTH-VAL-0007",
+        "amount": "2524.57",
+        "currency": "USD",
+        "due_at": "2026-11-21",
+        "notes": "[SYNTHETIC] Valid operational invoice #0007"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-008",
+        "invoice_reference": "INV-SYNTH-VAL-0008",
+        "amount": "18365.68",
+        "currency": "USD",
+        "due_at": "2026-11-30",
+        "notes": "[SYNTHETIC] Valid operational invoice #0008"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-009",
+        "invoice_reference": "INV-SYNTH-VAL-0009",
+        "amount": "42417.27",
+        "currency": "USD",
+        "due_at": "2026-12-24",
+        "notes": "[SYNTHETIC] Valid operational invoice #0009"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-010",
+        "invoice_reference": "INV-SYNTH-VAL-0010",
+        "amount": "2250.99",
+        "currency": "USD",
+        "due_at": "2026-12-21",
+        "notes": "[SYNTHETIC] Valid operational invoice #0010"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-VAL-0011",
+        "amount": "16704.71",
+        "currency": "USD",
+        "due_at": "2026-12-27",
+        "notes": "[SYNTHETIC] Valid operational invoice #0011"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-VAL-0012",
+        "amount": "45738.00",
+        "currency": "USD",
+        "due_at": "2026-12-12",
+        "notes": "[SYNTHETIC] Valid operational invoice #0012"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-VAL-0013",
+        "amount": "18516.89",
+        "currency": "USD",
+        "due_at": "2026-12-14",
+        "notes": "[SYNTHETIC] Valid operational invoice #0013"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-VAL-0014",
+        "amount": "23361.32",
+        "currency": "USD",
+        "due_at": "2026-11-16",
+        "notes": "[SYNTHETIC] Valid operational invoice #0014"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-VAL-0015",
+        "amount": "13418.19",
+        "currency": "USD",
+        "due_at": "2026-12-30",
+        "notes": "[SYNTHETIC] Valid operational invoice #0015"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-006",
+        "invoice_reference": "INV-SYNTH-VAL-0016",
+        "amount": "35476.46",
+        "currency": "USD",
+        "due_at": "2026-12-07",
+        "notes": "[SYNTHETIC] Valid operational invoice #0016"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-007",
+        "invoice_reference": "INV-SYNTH-VAL-0017",
+        "amount": "23334.53",
+        "currency": "USD",
+        "due_at": "2026-11-25",
+        "notes": "[SYNTHETIC] Valid operational invoice #0017"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-008",
+        "invoice_reference": "INV-SYNTH-VAL-0018",
+        "amount": "18086.82",
+        "currency": "USD",
+        "due_at": "2026-12-07",
+        "notes": "[SYNTHETIC] Valid operational invoice #0018"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-009",
+        "invoice_reference": "INV-SYNTH-VAL-0019",
+        "amount": "8599.01",
+        "currency": "USD",
+        "due_at": "2026-11-21",
+        "notes": "[SYNTHETIC] Valid operational invoice #0019"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-010",
+        "invoice_reference": "INV-SYNTH-VAL-0020",
+        "amount": "31895.61",
+        "currency": "USD",
+        "due_at": "2026-11-22",
+        "notes": "[SYNTHETIC] Valid operational invoice #0020"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-VAL-0021",
+        "amount": "30138.37",
+        "currency": "USD",
+        "due_at": "2026-12-08",
+        "notes": "[SYNTHETIC] Valid operational invoice #0021"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-VAL-0022",
+        "amount": "22214.61",
+        "currency": "USD",
+        "due_at": "2026-11-18",
+        "notes": "[SYNTHETIC] Valid operational invoice #0022"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-VAL-0023",
+        "amount": "38564.35",
+        "currency": "USD",
+        "due_at": "2026-12-20",
+        "notes": "[SYNTHETIC] Valid operational invoice #0023"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-VAL-0024",
+        "amount": "10496.17",
+        "currency": "USD",
+        "due_at": "2026-12-10",
+        "notes": "[SYNTHETIC] Valid operational invoice #0024"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-VAL-0025",
+        "amount": "6635.23",
+        "currency": "USD",
+        "due_at": "2026-12-21",
+        "notes": "[SYNTHETIC] Valid operational invoice #0025"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-006",
+        "invoice_reference": "INV-SYNTH-VAL-0026",
+        "amount": "24618.57",
+        "currency": "USD",
+        "due_at": "2026-12-26",
+        "notes": "[SYNTHETIC] Valid operational invoice #0026"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-007",
+        "invoice_reference": "INV-SYNTH-VAL-0027",
+        "amount": "30361.14",
+        "currency": "USD",
+        "due_at": "2026-12-22",
+        "notes": "[SYNTHETIC] Valid operational invoice #0027"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-008",
+        "invoice_reference": "INV-SYNTH-VAL-0028",
+        "amount": "16155.33",
+        "currency": "USD",
+        "due_at": "2026-11-20",
+        "notes": "[SYNTHETIC] Valid operational invoice #0028"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-009",
+        "invoice_reference": "INV-SYNTH-VAL-0029",
+        "amount": "3869.02",
+        "currency": "USD",
+        "due_at": "2026-12-28",
+        "notes": "[SYNTHETIC] Valid operational invoice #0029"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-010",
+        "invoice_reference": "INV-SYNTH-VAL-0030",
+        "amount": "19142.49",
+        "currency": "USD",
+        "due_at": "2026-12-04",
+        "notes": "[SYNTHETIC] Valid operational invoice #0030"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-VAL-0031",
+        "amount": "6718.43",
+        "currency": "USD",
+        "due_at": "2026-11-30",
+        "notes": "[SYNTHETIC] Valid operational invoice #0031"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-VAL-0032",
+        "amount": "8497.61",
+        "currency": "USD",
+        "due_at": "2026-12-10",
+        "notes": "[SYNTHETIC] Valid operational invoice #0032"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-VAL-0033",
+        "amount": "23343.11",
+        "currency": "USD",
+        "due_at": "2026-12-15",
+        "notes": "[SYNTHETIC] Valid operational invoice #0033"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-VAL-0034",
+        "amount": "30629.34",
+        "currency": "USD",
+        "due_at": "2026-11-26",
+        "notes": "[SYNTHETIC] Valid operational invoice #0034"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-VAL-0035",
+        "amount": "31078.03",
+        "currency": "USD",
+        "due_at": "2026-12-08",
+        "notes": "[SYNTHETIC] Valid operational invoice #0035"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-006",
+        "invoice_reference": "INV-SYNTH-VAL-0036",
+        "amount": "17599.72",
+        "currency": "USD",
+        "due_at": "2026-12-28",
+        "notes": "[SYNTHETIC] Valid operational invoice #0036"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-007",
+        "invoice_reference": "INV-SYNTH-VAL-0037",
+        "amount": "22420.72",
+        "currency": "USD",
+        "due_at": "2026-12-30",
+        "notes": "[SYNTHETIC] Valid operational invoice #0037"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-008",
+        "invoice_reference": "INV-SYNTH-VAL-0038",
+        "amount": "6014.67",
+        "currency": "USD",
+        "due_at": "2026-12-24",
+        "notes": "[SYNTHETIC] Valid operational invoice #0038"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-009",
+        "invoice_reference": "INV-SYNTH-VAL-0039",
+        "amount": "14381.15",
+        "currency": "USD",
+        "due_at": "2026-12-20",
+        "notes": "[SYNTHETIC] Valid operational invoice #0039"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-010",
+        "invoice_reference": "INV-SYNTH-VAL-0040",
+        "amount": "20561.22",
+        "currency": "USD",
+        "due_at": "2026-11-26",
+        "notes": "[SYNTHETIC] Valid operational invoice #0040"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-VAL-0041",
+        "amount": "38802.19",
+        "currency": "USD",
+        "due_at": "2026-12-10",
+        "notes": "[SYNTHETIC] Valid operational invoice #0041"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-VAL-0042",
+        "amount": "22669.86",
+        "currency": "USD",
+        "due_at": "2026-12-26",
+        "notes": "[SYNTHETIC] Valid operational invoice #0042"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-VAL-0043",
+        "amount": "46745.33",
+        "currency": "USD",
+        "due_at": "2026-11-30",
+        "notes": "[SYNTHETIC] Valid operational invoice #0043"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-VAL-0044",
+        "amount": "27227.80",
+        "currency": "USD",
+        "due_at": "2026-11-19",
+        "notes": "[SYNTHETIC] Valid operational invoice #0044"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-VAL-0045",
+        "amount": "19238.94",
+        "currency": "USD",
+        "due_at": "2026-11-18",
+        "notes": "[SYNTHETIC] Valid operational invoice #0045"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-006",
+        "invoice_reference": "INV-SYNTH-VAL-0046",
+        "amount": "26487.11",
+        "currency": "USD",
+        "due_at": "2026-12-11",
+        "notes": "[SYNTHETIC] Valid operational invoice #0046"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-007",
+        "invoice_reference": "INV-SYNTH-VAL-0047",
+        "amount": "22484.73",
+        "currency": "USD",
+        "due_at": "2026-11-20",
+        "notes": "[SYNTHETIC] Valid operational invoice #0047"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-008",
+        "invoice_reference": "INV-SYNTH-VAL-0048",
+        "amount": "17723.52",
+        "currency": "USD",
+        "due_at": "2026-12-22",
+        "notes": "[SYNTHETIC] Valid operational invoice #0048"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-009",
+        "invoice_reference": "INV-SYNTH-VAL-0049",
+        "amount": "26422.09",
+        "currency": "USD",
+        "due_at": "2026-11-29",
+        "notes": "[SYNTHETIC] Valid operational invoice #0049"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-010",
+        "invoice_reference": "INV-SYNTH-VAL-0050",
+        "amount": "41903.55",
+        "currency": "USD",
+        "due_at": "2026-12-11",
+        "notes": "[SYNTHETIC] Valid operational invoice #0050"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-VAL-0051",
+        "amount": "38516.28",
+        "currency": "USD",
+        "due_at": "2026-11-25",
+        "notes": "[SYNTHETIC] Valid operational invoice #0051"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-VAL-0052",
+        "amount": "22244.75",
+        "currency": "USD",
+        "due_at": "2026-11-24",
+        "notes": "[SYNTHETIC] Valid operational invoice #0052"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-VAL-0053",
+        "amount": "20713.61",
+        "currency": "USD",
+        "due_at": "2026-12-21",
+        "notes": "[SYNTHETIC] Valid operational invoice #0053"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-VAL-0054",
+        "amount": "45237.69",
+        "currency": "USD",
+        "due_at": "2026-12-02",
+        "notes": "[SYNTHETIC] Valid operational invoice #0054"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-VAL-0055",
+        "amount": "35964.63",
+        "currency": "USD",
+        "due_at": "2026-12-23",
+        "notes": "[SYNTHETIC] Valid operational invoice #0055"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-006",
+        "invoice_reference": "INV-SYNTH-VAL-0056",
+        "amount": "33529.14",
+        "currency": "USD",
+        "due_at": "2026-12-09",
+        "notes": "[SYNTHETIC] Valid operational invoice #0056"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-007",
+        "invoice_reference": "INV-SYNTH-VAL-0057",
+        "amount": "18422.95",
+        "currency": "USD",
+        "due_at": "2026-11-24",
+        "notes": "[SYNTHETIC] Valid operational invoice #0057"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-008",
+        "invoice_reference": "INV-SYNTH-VAL-0058",
+        "amount": "42767.16",
+        "currency": "USD",
+        "due_at": "2026-12-17",
+        "notes": "[SYNTHETIC] Valid operational invoice #0058"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-009",
+        "invoice_reference": "INV-SYNTH-VAL-0059",
+        "amount": "7651.03",
+        "currency": "USD",
+        "due_at": "2026-11-19",
+        "notes": "[SYNTHETIC] Valid operational invoice #0059"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-010",
+        "invoice_reference": "INV-SYNTH-VAL-0060",
+        "amount": "9223.03",
+        "currency": "USD",
+        "due_at": "2026-11-25",
+        "notes": "[SYNTHETIC] Valid operational invoice #0060"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-VAL-0061",
+        "amount": "13445.26",
+        "currency": "USD",
+        "due_at": "2026-12-29",
+        "notes": "[SYNTHETIC] Valid operational invoice #0061"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-VAL-0062",
+        "amount": "35438.34",
+        "currency": "USD",
+        "due_at": "2026-12-24",
+        "notes": "[SYNTHETIC] Valid operational invoice #0062"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-VAL-0063",
+        "amount": "5354.09",
+        "currency": "USD",
+        "due_at": "2026-12-10",
+        "notes": "[SYNTHETIC] Valid operational invoice #0063"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-VAL-0064",
+        "amount": "32037.54",
+        "currency": "USD",
+        "due_at": "2026-12-24",
+        "notes": "[SYNTHETIC] Valid operational invoice #0064"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-VAL-0065",
+        "amount": "39287.87",
+        "currency": "USD",
+        "due_at": "2026-12-19",
+        "notes": "[SYNTHETIC] Valid operational invoice #0065"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-006",
+        "invoice_reference": "INV-SYNTH-VAL-0066",
+        "amount": "21115.14",
+        "currency": "USD",
+        "due_at": "2026-12-21",
+        "notes": "[SYNTHETIC] Valid operational invoice #0066"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-007",
+        "invoice_reference": "INV-SYNTH-VAL-0067",
+        "amount": "988.09",
+        "currency": "USD",
+        "due_at": "2026-12-29",
+        "notes": "[SYNTHETIC] Valid operational invoice #0067"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-008",
+        "invoice_reference": "INV-SYNTH-VAL-0068",
+        "amount": "9634.29",
+        "currency": "USD",
+        "due_at": "2026-12-29",
+        "notes": "[SYNTHETIC] Valid operational invoice #0068"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-009",
+        "invoice_reference": "INV-SYNTH-VAL-0069",
+        "amount": "45069.33",
+        "currency": "USD",
+        "due_at": "2026-12-03",
+        "notes": "[SYNTHETIC] Valid operational invoice #0069"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-010",
+        "invoice_reference": "INV-SYNTH-VAL-0070",
+        "amount": "28560.98",
+        "currency": "USD",
+        "due_at": "2026-11-23",
+        "notes": "[SYNTHETIC] Valid operational invoice #0070"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-VAL-0071",
+        "amount": "24645.57",
+        "currency": "USD",
+        "due_at": "2026-12-13",
+        "notes": "[SYNTHETIC] Valid operational invoice #0071"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-VAL-0072",
+        "amount": "13292.23",
+        "currency": "USD",
+        "due_at": "2026-12-15",
+        "notes": "[SYNTHETIC] Valid operational invoice #0072"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-VAL-0073",
+        "amount": "297.23",
+        "currency": "USD",
+        "due_at": "2026-12-02",
+        "notes": "[SYNTHETIC] Valid operational invoice #0073"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-VAL-0074",
+        "amount": "42017.20",
+        "currency": "USD",
+        "due_at": "2026-11-27",
+        "notes": "[SYNTHETIC] Valid operational invoice #0074"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-VAL-0075",
+        "amount": "42612.42",
+        "currency": "USD",
+        "due_at": "2026-11-22",
+        "notes": "[SYNTHETIC] Valid operational invoice #0075"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-006",
+        "invoice_reference": "INV-SYNTH-VAL-0076",
+        "amount": "25060.36",
+        "currency": "USD",
+        "due_at": "2026-12-26",
+        "notes": "[SYNTHETIC] Valid operational invoice #0076"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-007",
+        "invoice_reference": "INV-SYNTH-VAL-0077",
+        "amount": "42610.84",
+        "currency": "USD",
+        "due_at": "2026-12-24",
+        "notes": "[SYNTHETIC] Valid operational invoice #0077"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-008",
+        "invoice_reference": "INV-SYNTH-VAL-0078",
+        "amount": "16710.87",
+        "currency": "USD",
+        "due_at": "2026-11-25",
+        "notes": "[SYNTHETIC] Valid operational invoice #0078"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-009",
+        "invoice_reference": "INV-SYNTH-VAL-0079",
+        "amount": "31391.16",
+        "currency": "USD",
+        "due_at": "2026-11-26",
+        "notes": "[SYNTHETIC] Valid operational invoice #0079"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-010",
+        "invoice_reference": "INV-SYNTH-VAL-0080",
+        "amount": "45271.39",
+        "currency": "USD",
+        "due_at": "2026-12-19",
+        "notes": "[SYNTHETIC] Valid operational invoice #0080"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-VAL-0081",
+        "amount": "72.97",
+        "currency": "USD",
+        "due_at": "2026-12-24",
+        "notes": "[SYNTHETIC] Valid operational invoice #0081"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-VAL-0082",
+        "amount": "27217.18",
+        "currency": "USD",
+        "due_at": "2026-12-17",
+        "notes": "[SYNTHETIC] Valid operational invoice #0082"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-VAL-0083",
+        "amount": "1658.82",
+        "currency": "USD",
+        "due_at": "2026-11-23",
+        "notes": "[SYNTHETIC] Valid operational invoice #0083"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-VAL-0084",
+        "amount": "30474.03",
+        "currency": "USD",
+        "due_at": "2026-12-05",
+        "notes": "[SYNTHETIC] Valid operational invoice #0084"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-VAL-0085",
+        "amount": "20111.71",
+        "currency": "USD",
+        "due_at": "2026-11-19",
+        "notes": "[SYNTHETIC] Valid operational invoice #0085"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-006",
+        "invoice_reference": "INV-SYNTH-VAL-0086",
+        "amount": "20230.77",
+        "currency": "USD",
+        "due_at": "2026-12-22",
+        "notes": "[SYNTHETIC] Valid operational invoice #0086"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-007",
+        "invoice_reference": "INV-SYNTH-VAL-0087",
+        "amount": "6631.62",
+        "currency": "USD",
+        "due_at": "2026-11-21",
+        "notes": "[SYNTHETIC] Valid operational invoice #0087"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-008",
+        "invoice_reference": "INV-SYNTH-VAL-0088",
+        "amount": "40792.83",
+        "currency": "USD",
+        "due_at": "2026-11-20",
+        "notes": "[SYNTHETIC] Valid operational invoice #0088"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-009",
+        "invoice_reference": "INV-SYNTH-VAL-0089",
+        "amount": "44711.63",
+        "currency": "USD",
+        "due_at": "2026-11-24",
+        "notes": "[SYNTHETIC] Valid operational invoice #0089"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-010",
+        "invoice_reference": "INV-SYNTH-VAL-0090",
+        "amount": "10795.25",
+        "currency": "USD",
+        "due_at": "2026-12-28",
+        "notes": "[SYNTHETIC] Valid operational invoice #0090"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-VAL-0091",
+        "amount": "39894.57",
+        "currency": "USD",
+        "due_at": "2026-12-21",
+        "notes": "[SYNTHETIC] Valid operational invoice #0091"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-VAL-0092",
+        "amount": "13876.85",
+        "currency": "USD",
+        "due_at": "2026-12-02",
+        "notes": "[SYNTHETIC] Valid operational invoice #0092"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-VAL-0093",
+        "amount": "44289.48",
+        "currency": "USD",
+        "due_at": "2026-12-24",
+        "notes": "[SYNTHETIC] Valid operational invoice #0093"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-VAL-0094",
+        "amount": "35520.38",
+        "currency": "USD",
+        "due_at": "2026-11-29",
+        "notes": "[SYNTHETIC] Valid operational invoice #0094"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-VAL-0095",
+        "amount": "45264.43",
+        "currency": "USD",
+        "due_at": "2026-12-30",
+        "notes": "[SYNTHETIC] Valid operational invoice #0095"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-006",
+        "invoice_reference": "INV-SYNTH-VAL-0096",
+        "amount": "16898.77",
+        "currency": "USD",
+        "due_at": "2026-12-05",
+        "notes": "[SYNTHETIC] Valid operational invoice #0096"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-007",
+        "invoice_reference": "INV-SYNTH-VAL-0097",
+        "amount": "33494.89",
+        "currency": "USD",
+        "due_at": "2026-12-28",
+        "notes": "[SYNTHETIC] Valid operational invoice #0097"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-008",
+        "invoice_reference": "INV-SYNTH-VAL-0098",
+        "amount": "31349.78",
+        "currency": "USD",
+        "due_at": "2026-12-14",
+        "notes": "[SYNTHETIC] Valid operational invoice #0098"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-009",
+        "invoice_reference": "INV-SYNTH-VAL-0099",
+        "amount": "43442.40",
+        "currency": "USD",
+        "due_at": "2026-12-14",
+        "notes": "[SYNTHETIC] Valid operational invoice #0099"
+      },
+      {
+        "category": "VALID",
+        "supplier_reference": "SUP-DOM-010",
+        "invoice_reference": "INV-SYNTH-VAL-0100",
+        "amount": "10175.56",
+        "currency": "USD",
+        "due_at": "2026-12-01",
+        "notes": "[SYNTHETIC] Valid operational invoice #0100"
+      }
+    ],
+    "duplicate": [
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-VAL-0001",
+        "amount": "9364.12",
+        "currency": "USD",
+        "due_at": "2026-11-17",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0001"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-VAL-0002",
+        "amount": "23096.13",
+        "currency": "USD",
+        "due_at": "2026-12-01",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0002"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-VAL-0003",
+        "amount": "18749.27",
+        "currency": "USD",
+        "due_at": "2026-11-24",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0003"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-VAL-0004",
+        "amount": "8622.91",
+        "currency": "USD",
+        "due_at": "2026-12-29",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0004"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-VAL-0005",
+        "amount": "45773.66",
+        "currency": "USD",
+        "due_at": "2026-11-21",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0005"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-006",
+        "invoice_reference": "INV-SYNTH-VAL-0006",
+        "amount": "35418.36",
+        "currency": "USD",
+        "due_at": "2026-11-18",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0006"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-007",
+        "invoice_reference": "INV-SYNTH-VAL-0007",
+        "amount": "2524.57",
+        "currency": "USD",
+        "due_at": "2026-11-21",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0007"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-008",
+        "invoice_reference": "INV-SYNTH-VAL-0008",
+        "amount": "18365.68",
+        "currency": "USD",
+        "due_at": "2026-11-30",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0008"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-009",
+        "invoice_reference": "INV-SYNTH-VAL-0009",
+        "amount": "42417.27",
+        "currency": "USD",
+        "due_at": "2026-12-24",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0009"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-010",
+        "invoice_reference": "INV-SYNTH-VAL-0010",
+        "amount": "2250.99",
+        "currency": "USD",
+        "due_at": "2026-12-21",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0010"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-VAL-0011",
+        "amount": "16704.71",
+        "currency": "USD",
+        "due_at": "2026-12-27",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0011"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-VAL-0012",
+        "amount": "45738.00",
+        "currency": "USD",
+        "due_at": "2026-12-12",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0012"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-VAL-0013",
+        "amount": "18516.89",
+        "currency": "USD",
+        "due_at": "2026-12-14",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0013"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-VAL-0014",
+        "amount": "23361.32",
+        "currency": "USD",
+        "due_at": "2026-11-16",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0014"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-VAL-0015",
+        "amount": "13418.19",
+        "currency": "USD",
+        "due_at": "2026-12-30",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0015"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-006",
+        "invoice_reference": "INV-SYNTH-VAL-0016",
+        "amount": "35476.46",
+        "currency": "USD",
+        "due_at": "2026-12-07",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0016"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-007",
+        "invoice_reference": "INV-SYNTH-VAL-0017",
+        "amount": "23334.53",
+        "currency": "USD",
+        "due_at": "2026-11-25",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0017"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-008",
+        "invoice_reference": "INV-SYNTH-VAL-0018",
+        "amount": "18086.82",
+        "currency": "USD",
+        "due_at": "2026-12-07",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0018"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-009",
+        "invoice_reference": "INV-SYNTH-VAL-0019",
+        "amount": "8599.01",
+        "currency": "USD",
+        "due_at": "2026-11-21",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0019"
+      },
+      {
+        "category": "DUPLICATE",
+        "supplier_reference": "SUP-DOM-010",
+        "invoice_reference": "INV-SYNTH-VAL-0020",
+        "amount": "31895.61",
+        "currency": "USD",
+        "due_at": "2026-11-22",
+        "notes": "[SYNTHETIC] Intentional duplicate of INV-SYNTH-VAL-0020"
+      }
+    ],
+    "invalid": [
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-INV-001",
+        "amount": "0.00",
+        "currency": "USD",
+        "due_at": "2026-11-20",
+        "expected_error": "amount must be > 0",
+        "notes": "[SYNTHETIC] Zero amount invalid test"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-INV-002",
+        "amount": "-450.00",
+        "currency": "USD",
+        "due_at": "2026-11-20",
+        "expected_error": "amount must be > 0",
+        "notes": "[SYNTHETIC] Negative amount invalid test"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-INV-003",
+        "amount": "NOT_A_NUMBER",
+        "currency": "USD",
+        "due_at": "2026-11-20",
+        "expected_error": "amount is not a valid decimal number",
+        "notes": "[SYNTHETIC] Corrupted decimal test"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-INV-004",
+        "amount": "-0.01",
+        "currency": "USD",
+        "due_at": "2026-11-20",
+        "expected_error": "amount must be > 0",
+        "notes": "[SYNTHETIC] Fractional negative amount"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-INV-005",
+        "amount": "0",
+        "currency": "USD",
+        "due_at": "2026-11-20",
+        "expected_error": "amount must be > 0",
+        "notes": "[SYNTHETIC] Zero integer amount"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-INV-006",
+        "amount": "1250.00",
+        "currency": "XYZ",
+        "due_at": "2026-11-20",
+        "expected_error": "currency 'XYZ' is not a recognised ISO 4217 code",
+        "notes": "[SYNTHETIC] Non-existent currency code"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-INV-007",
+        "amount": "980.00",
+        "currency": "USDD",
+        "due_at": "2026-11-20",
+        "expected_error": "currency 'USDD' is not a recognised ISO 4217 code",
+        "notes": "[SYNTHETIC] 4-letter invalid currency"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-INV-008",
+        "amount": "340.00",
+        "currency": "123",
+        "due_at": "2026-11-20",
+        "expected_error": "currency '123' is not a recognised ISO 4217 code",
+        "notes": "[SYNTHETIC] Numeric currency code"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-INV-009",
+        "amount": "500.00",
+        "currency": "",
+        "due_at": "2026-11-20",
+        "expected_error": "currency is required",
+        "notes": "[SYNTHETIC] Empty currency string"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-INV-010",
+        "amount": "750.00",
+        "currency": "USD",
+        "due_at": "2026-13-45",
+        "expected_error": "due_at must be YYYY-MM-DD",
+        "notes": "[SYNTHETIC] Out of range date"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-INV-011",
+        "amount": "820.00",
+        "currency": "USD",
+        "due_at": "not-a-date",
+        "expected_error": "due_at must be YYYY-MM-DD",
+        "notes": "[SYNTHETIC] Malformed text date"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-INV-012",
+        "amount": "1100.00",
+        "currency": "USD",
+        "due_at": "2026/11/20",
+        "expected_error": "due_at must be YYYY-MM-DD",
+        "notes": "[SYNTHETIC] Slash formatted date"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-NONEXISTENT-999",
+        "invoice_reference": "INV-SYNTH-INV-013",
+        "amount": "1450.00",
+        "currency": "USD",
+        "due_at": "2026-11-25",
+        "expected_error": "supplier_reference 'SUP-NONEXISTENT-999' not found",
+        "notes": "[SYNTHETIC] Unknown supplier reference"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "SUP-ORPHAN-001",
+        "invoice_reference": "INV-SYNTH-INV-014",
+        "amount": "2300.00",
+        "currency": "USD",
+        "due_at": "2026-11-25",
+        "expected_error": "supplier_reference 'SUP-ORPHAN-001' not found",
+        "notes": "[SYNTHETIC] Unregistered supplier reference"
+      },
+      {
+        "category": "INVALID",
+        "supplier_reference": "",
+        "invoice_reference": "INV-SYNTH-INV-015",
+        "amount": "500.00",
+        "currency": "USD",
+        "due_at": "2026-11-25",
+        "expected_error": "supplier_reference is required",
+        "notes": "[SYNTHETIC] Empty supplier reference"
+      }
+    ],
+    "international": [
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-001",
+        "invoice_reference": "INV-SYNTH-INT-0001",
+        "amount": "1200.00",
+        "currency": "EUR",
+        "due_at": "2026-11-27",
+        "notes": "[SYNTHETIC] International EUR settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-001",
+        "invoice_reference": "INV-SYNTH-INT-0002",
+        "amount": "2450.00",
+        "currency": "EUR",
+        "due_at": "2026-11-22",
+        "notes": "[SYNTHETIC] International EUR settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-001",
+        "invoice_reference": "INV-SYNTH-INT-0003",
+        "amount": "5800.00",
+        "currency": "EUR",
+        "due_at": "2026-11-30",
+        "notes": "[SYNTHETIC] International EUR settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-001",
+        "invoice_reference": "INV-SYNTH-INT-0004",
+        "amount": "14200.00",
+        "currency": "EUR",
+        "due_at": "2026-11-20",
+        "notes": "[SYNTHETIC] International EUR settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-002",
+        "invoice_reference": "INV-SYNTH-INT-0005",
+        "amount": "850.00",
+        "currency": "GBP",
+        "due_at": "2026-12-08",
+        "notes": "[SYNTHETIC] International GBP settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-002",
+        "invoice_reference": "INV-SYNTH-INT-0006",
+        "amount": "1900.00",
+        "currency": "GBP",
+        "due_at": "2026-12-07",
+        "notes": "[SYNTHETIC] International GBP settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-002",
+        "invoice_reference": "INV-SYNTH-INT-0007",
+        "amount": "4200.00",
+        "currency": "GBP",
+        "due_at": "2026-11-27",
+        "notes": "[SYNTHETIC] International GBP settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-002",
+        "invoice_reference": "INV-SYNTH-INT-0008",
+        "amount": "9600.00",
+        "currency": "GBP",
+        "due_at": "2026-12-08",
+        "notes": "[SYNTHETIC] International GBP settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-003",
+        "invoice_reference": "INV-SYNTH-INT-0009",
+        "amount": "150000",
+        "currency": "JPY",
+        "due_at": "2026-11-27",
+        "notes": "[SYNTHETIC] International JPY settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-003",
+        "invoice_reference": "INV-SYNTH-INT-0010",
+        "amount": "320000",
+        "currency": "JPY",
+        "due_at": "2026-11-20",
+        "notes": "[SYNTHETIC] International JPY settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-003",
+        "invoice_reference": "INV-SYNTH-INT-0011",
+        "amount": "850000",
+        "currency": "JPY",
+        "due_at": "2026-11-22",
+        "notes": "[SYNTHETIC] International JPY settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-003",
+        "invoice_reference": "INV-SYNTH-INT-0012",
+        "amount": "1200000",
+        "currency": "JPY",
+        "due_at": "2026-12-12",
+        "notes": "[SYNTHETIC] International JPY settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-004",
+        "invoice_reference": "INV-SYNTH-INT-0013",
+        "amount": "1600.00",
+        "currency": "CAD",
+        "due_at": "2026-12-10",
+        "notes": "[SYNTHETIC] International CAD settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-004",
+        "invoice_reference": "INV-SYNTH-INT-0014",
+        "amount": "3100.00",
+        "currency": "CAD",
+        "due_at": "2026-11-21",
+        "notes": "[SYNTHETIC] International CAD settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-004",
+        "invoice_reference": "INV-SYNTH-INT-0015",
+        "amount": "7500.00",
+        "currency": "CAD",
+        "due_at": "2026-11-27",
+        "notes": "[SYNTHETIC] International CAD settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-004",
+        "invoice_reference": "INV-SYNTH-INT-0016",
+        "amount": "18000.00",
+        "currency": "CAD",
+        "due_at": "2026-11-22",
+        "notes": "[SYNTHETIC] International CAD settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-005",
+        "invoice_reference": "INV-SYNTH-INT-0017",
+        "amount": "1400.00",
+        "currency": "AUD",
+        "due_at": "2026-11-21",
+        "notes": "[SYNTHETIC] International AUD settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-005",
+        "invoice_reference": "INV-SYNTH-INT-0018",
+        "amount": "2900.00",
+        "currency": "AUD",
+        "due_at": "2026-11-30",
+        "notes": "[SYNTHETIC] International AUD settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-005",
+        "invoice_reference": "INV-SYNTH-INT-0019",
+        "amount": "6800.00",
+        "currency": "AUD",
+        "due_at": "2026-11-22",
+        "notes": "[SYNTHETIC] International AUD settlement obligation"
+      },
+      {
+        "category": "INTERNATIONAL",
+        "supplier_reference": "SUP-INT-005",
+        "invoice_reference": "INV-SYNTH-INT-0020",
+        "amount": "15500.00",
+        "currency": "AUD",
+        "due_at": "2026-12-06",
+        "notes": "[SYNTHETIC] International AUD settlement obligation"
+      }
+    ],
+    "large": [
+      {
+        "category": "LARGE",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-LRG-0001",
+        "amount": "100000.00",
+        "currency": "USD",
+        "due_at": "2026-12-10",
+        "notes": "[SYNTHETIC] Large treasury capital expenditure #0001"
+      },
+      {
+        "category": "LARGE",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-LRG-0002",
+        "amount": "125000.00",
+        "currency": "USD",
+        "due_at": "2026-12-12",
+        "notes": "[SYNTHETIC] Large treasury capital expenditure #0002"
+      },
+      {
+        "category": "LARGE",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-LRG-0003",
+        "amount": "150000.00",
+        "currency": "USD",
+        "due_at": "2027-01-06",
+        "notes": "[SYNTHETIC] Large treasury capital expenditure #0003"
+      },
+      {
+        "category": "LARGE",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-LRG-0004",
+        "amount": "200000.00",
+        "currency": "USD",
+        "due_at": "2026-12-26",
+        "notes": "[SYNTHETIC] Large treasury capital expenditure #0004"
+      },
+      {
+        "category": "LARGE",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-LRG-0005",
+        "amount": "250000.00",
+        "currency": "USD",
+        "due_at": "2026-12-08",
+        "notes": "[SYNTHETIC] Large treasury capital expenditure #0005"
+      },
+      {
+        "category": "LARGE",
+        "supplier_reference": "SUP-DOM-002",
+        "invoice_reference": "INV-SYNTH-LRG-0006",
+        "amount": "300000.00",
+        "currency": "USD",
+        "due_at": "2026-12-29",
+        "notes": "[SYNTHETIC] Large treasury capital expenditure #0006"
+      },
+      {
+        "category": "LARGE",
+        "supplier_reference": "SUP-DOM-003",
+        "invoice_reference": "INV-SYNTH-LRG-0007",
+        "amount": "400000.00",
+        "currency": "USD",
+        "due_at": "2026-12-03",
+        "notes": "[SYNTHETIC] Large treasury capital expenditure #0007"
+      },
+      {
+        "category": "LARGE",
+        "supplier_reference": "SUP-DOM-004",
+        "invoice_reference": "INV-SYNTH-LRG-0008",
+        "amount": "500000.00",
+        "currency": "USD",
+        "due_at": "2027-01-10",
+        "notes": "[SYNTHETIC] Large treasury capital expenditure #0008"
+      },
+      {
+        "category": "LARGE",
+        "supplier_reference": "SUP-DOM-005",
+        "invoice_reference": "INV-SYNTH-LRG-0009",
+        "amount": "650000.00",
+        "currency": "USD",
+        "due_at": "2026-12-31",
+        "notes": "[SYNTHETIC] Large treasury capital expenditure #0009"
+      },
+      {
+        "category": "LARGE",
+        "supplier_reference": "SUP-DOM-001",
+        "invoice_reference": "INV-SYNTH-LRG-0010",
+        "amount": "750000.00",
+        "currency": "USD",
+        "due_at": "2026-12-31",
+        "notes": "[SYNTHETIC] Large treasury capital expenditure #0010"
+      }
+    ],
+    "incomplete": [
+      {
+        "category": "INCOMPLETE",
+        "supplier_reference": "SUP-INC-001",
+        "invoice_reference": "INV-SYNTH-INC-0001",
+        "amount": "2436.00",
+        "currency": "USD",
+        "due_at": "2026-11-25",
+        "notes": "[SYNTHETIC] Obligation with missing/unconfigured recipient details #0001"
+      },
+      {
+        "category": "INCOMPLETE",
+        "supplier_reference": "SUP-INC-002",
+        "invoice_reference": "INV-SYNTH-INC-0002",
+        "amount": "3713.00",
+        "currency": "USD",
+        "due_at": "2026-12-03",
+        "notes": "[SYNTHETIC] Obligation with missing/unconfigured recipient details #0002"
+      },
+      {
+        "category": "INCOMPLETE",
+        "supplier_reference": "SUP-INC-003",
+        "invoice_reference": "INV-SYNTH-INC-0003",
+        "amount": "3807.00",
+        "currency": "USD",
+        "due_at": "2026-12-01",
+        "notes": "[SYNTHETIC] Obligation with missing/unconfigured recipient details #0003"
+      },
+      {
+        "category": "INCOMPLETE",
+        "supplier_reference": "SUP-INC-001",
+        "invoice_reference": "INV-SYNTH-INC-0004",
+        "amount": "1279.00",
+        "currency": "USD",
+        "due_at": "2026-11-21",
+        "notes": "[SYNTHETIC] Obligation with missing/unconfigured recipient details #0004"
+      },
+      {
+        "category": "INCOMPLETE",
+        "supplier_reference": "SUP-INC-002",
+        "invoice_reference": "INV-SYNTH-INC-0005",
+        "amount": "897.00",
+        "currency": "USD",
+        "due_at": "2026-12-01",
+        "notes": "[SYNTHETIC] Obligation with missing/unconfigured recipient details #0005"
+      },
+      {
+        "category": "INCOMPLETE",
+        "supplier_reference": "SUP-INC-003",
+        "invoice_reference": "INV-SYNTH-INC-0006",
+        "amount": "1951.00",
+        "currency": "USD",
+        "due_at": "2026-12-01",
+        "notes": "[SYNTHETIC] Obligation with missing/unconfigured recipient details #0006"
+      },
+      {
+        "category": "INCOMPLETE",
+        "supplier_reference": "SUP-INC-001",
+        "invoice_reference": "INV-SYNTH-INC-0007",
+        "amount": "2183.00",
+        "currency": "USD",
+        "due_at": "2026-12-02",
+        "notes": "[SYNTHETIC] Obligation with missing/unconfigured recipient details #0007"
+      },
+      {
+        "category": "INCOMPLETE",
+        "supplier_reference": "SUP-INC-002",
+        "invoice_reference": "INV-SYNTH-INC-0008",
+        "amount": "4038.00",
+        "currency": "USD",
+        "due_at": "2026-11-19",
+        "notes": "[SYNTHETIC] Obligation with missing/unconfigured recipient details #0008"
+      },
+      {
+        "category": "INCOMPLETE",
+        "supplier_reference": "SUP-INC-003",
+        "invoice_reference": "INV-SYNTH-INC-0009",
+        "amount": "3258.00",
+        "currency": "USD",
+        "due_at": "2026-11-21",
+        "notes": "[SYNTHETIC] Obligation with missing/unconfigured recipient details #0009"
+      },
+      {
+        "category": "INCOMPLETE",
+        "supplier_reference": "SUP-INC-001",
+        "invoice_reference": "INV-SYNTH-INC-0010",
+        "amount": "748.00",
+        "currency": "USD",
+        "due_at": "2026-11-30",
+        "notes": "[SYNTHETIC] Obligation with missing/unconfigured recipient details #0010"
+      }
+    ]
+  }
+}

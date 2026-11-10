@@ -21,8 +21,9 @@ if _BACKEND not in sys.path:
 # Point the app at the in-memory test DB BEFORE importing main.py
 os.environ["DATABASE_URL"] = "sqlite://"
 # Unset AI keys during test runs so tests don't make real outbound network calls
-os.environ.pop("AI_API_KEY", None)
-os.environ.pop("GEMINI_API_KEY", None)
+# Set to empty string so dotenv.load_dotenv() will not re-populate from .env
+os.environ["AI_API_KEY"] = ""
+os.environ["GEMINI_API_KEY"] = ""
 
 import pytest
 import anyio
@@ -176,8 +177,10 @@ def client(db):
 
     # Ensure AI keys are cleared from environment while test client is running
     # to prevent real outbound AI calls from hanging inside the test runner.
-    old_ai_key = os.environ.pop("AI_API_KEY", None)
-    old_gemini_key = os.environ.pop("GEMINI_API_KEY", None)
+    old_ai_key = os.environ.get("AI_API_KEY")
+    old_gemini_key = os.environ.get("GEMINI_API_KEY")
+    os.environ["AI_API_KEY"] = ""
+    os.environ["GEMINI_API_KEY"] = ""
 
     # httpx.ASGITransport is async-only in httpx>=0.23; use starlette TestClient instead.
     # The middleware deadlock is avoided because main.py uses @app.middleware("http")

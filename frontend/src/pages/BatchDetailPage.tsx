@@ -385,9 +385,9 @@ function ApprovalPanel({
         </div>
       )}
 
-      {mutation.data && !mutation.data.success && (
-        <div className="alert alert-error">
-          Approval rejected: {mutation.data.error_message}
+      {mutation.data && (
+        <div className="alert alert-success">
+          Batch approved: {mutation.data.status}
         </div>
       )}
 
