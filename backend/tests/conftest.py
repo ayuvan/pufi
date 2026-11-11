@@ -24,6 +24,8 @@ os.environ["DATABASE_URL"] = "sqlite://"
 # Set to empty string so dotenv.load_dotenv() will not re-populate from .env
 os.environ["AI_API_KEY"] = ""
 os.environ["GEMINI_API_KEY"] = ""
+# Default Sandbox recipient for testing execution coordinator
+os.environ["PAYPAL_SANDBOX_RECIPIENT_EMAIL"] = "test-sandbox-receiver@personal.paypal.com"
 
 import pytest
 import anyio

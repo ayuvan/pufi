@@ -1,33 +1,34 @@
-import { useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, useMemo } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  PlusCircle,
-  CheckCircle2,
-  Inbox,
-  AlertCircle,
-} from 'lucide-react'
-import {
-  createBatch,
   fetchBatches,
+  createBatch,
   fetchObligations,
   type Batch,
-  type ObligationStatus,
 } from '../api/client'
-
-// -------------------------------------------------------------------------
-// Props
-// -------------------------------------------------------------------------
+import { PageHeader } from '../components/layout/PageHeader'
+import { StatusBadge } from '../components/common/StatusBadge'
+import { TableSkeleton } from '../components/common/LoadingSkeleton'
+import { EmptyState } from '../components/common/EmptyState'
+import { ErrorState } from '../components/common/ErrorState'
+import { Drawer } from '../components/common/Drawer'
+import {
+  Layers,
+  PlusCircle,
+  Search,
+  Filter,
+  ArrowRight,
+  Clock,
+  ShieldCheck,
+  CheckCircle2,
+} from 'lucide-react'
 
 interface BatchesPageProps {
   onOpenBatchDetail?: (batchId: string) => void
 }
 
-// -------------------------------------------------------------------------
-// Helpers
-// -------------------------------------------------------------------------
-
-function formatAmount(amount: string, currency: string): string {
-  const num = parseFloat(amount)
+function formatAmount(amount: string | number, currency: string = 'USD'): string {
+  const num = typeof amount === 'number' ? amount : parseFloat(amount)
   if (isNaN(num)) return `${amount} ${currency}`
   try {
     return new Intl.NumberFormat('en-US', {
@@ -40,58 +41,88 @@ function formatAmount(amount: string, currency: string): string {
   }
 }
 
-function StatusPill({ status }: { status: string }) {
-  const cls = `status-badge status-${status.toLowerCase()}`
-  return <span className={cls}>{status}</span>
-}
+export default function BatchesPage({ onOpenBatchDetail }: BatchesPageProps) {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [isCreateOpen, setIsCreateOpen] = useState(false)
 
-// -------------------------------------------------------------------------
-// Create batch form inside Executive Card
-// -------------------------------------------------------------------------
-
-function CreateBatchCard({
-  onCreated,
-  onCancel,
-}: {
-  onCreated: (b: Batch) => void
-  onCancel: () => void
-}) {
-  const queryClient = useQueryClient()
-  const [batchRef, setBatchRef] = useState(`BATCH-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`)
+  // Creation form state
+  const [batchRef, setBatchRef] = useState(
+    `BATCH-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`
+  )
   const [notes, setNotes] = useState('')
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectedObligationIds, setSelectedObligationIds] = useState<Set<string>>(new Set())
 
-  // Load only VALIDATED obligations (eligible for batching)
-  const { data, isLoading } = useQuery({
-    queryKey: ['obligations', 0, 'VALIDATED' as ObligationStatus],
+  const queryClient = useQueryClient()
+
+  // Batches query
+  const { data: batches, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ['batches'],
+    queryFn: () => fetchBatches({ limit: 100 }),
+  })
+
+  // Validated obligations query for creation drawer
+  const { data: validatedData, isLoading: isValidatedLoading } = useQuery({
+    queryKey: ['obligations', 0, 'VALIDATED'],
     queryFn: () => fetchObligations({ limit: 200, status: 'VALIDATED' }),
+    enabled: isCreateOpen,
   })
 
-  const obligations = data?.items ?? []
+  const validatedObligations = validatedData?.items || []
 
-  // Pre-select all validated obligations by default if available
-  useState(() => {
-    if (obligations.length > 0 && selectedIds.size === 0) {
-      setSelectedIds(new Set(obligations.map((o) => o.id)))
-    }
-  })
-
-  const mutation = useMutation({
+  // Create batch mutation
+  const createMutation = useMutation({
     mutationFn: () =>
       createBatch({
         batch_reference: batchRef.trim(),
-        obligation_ids: Array.from(selectedIds),
+        obligation_ids: Array.from(selectedObligationIds),
         notes: notes.trim() || undefined,
       }),
-    onSuccess: (batch) => {
-      queryClient.invalidateQueries({ queryKey: ['obligations'] })
+    onSuccess: (newBatch) => {
       queryClient.invalidateQueries({ queryKey: ['batches'] })
-      onCreated(batch)
+      queryClient.invalidateQueries({ queryKey: ['obligations'] })
+      setIsCreateOpen(false)
+      setSelectedObligationIds(new Set())
+      if (onOpenBatchDetail) {
+        onOpenBatchDetail(newBatch.id)
+      }
     },
   })
 
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
+  // Filter batches
+  const filteredBatches = useMemo(() => {
+    if (!batches) return []
+    return batches.filter((b: Batch) => {
+      if (statusFilter !== 'ALL' && b.status !== statusFilter) return false
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase()
+        const matchRef = b.batch_reference.toLowerCase().includes(q)
+        const matchNotes = (b.notes || '').toLowerCase().includes(q)
+        const matchId = b.id.toLowerCase().includes(q)
+        if (!matchRef && !matchNotes && !matchId) return false
+      }
+      return true
+    })
+  }, [batches, statusFilter, searchQuery])
+
+  // Aggregate stats
+  const metrics = useMemo(() => {
+    if (!batches) return { total: 0, draft: 0, submitted: 0, completed: 0 }
+    let draft = 0
+    let submitted = 0
+    let completed = 0
+
+    batches.forEach((b: Batch) => {
+      if (['DRAFT', 'ANALYZED', 'APPROVED'].includes(b.status)) draft++
+      if (['SUBMITTED', 'PROCESSING'].includes(b.status)) submitted++
+      if (['COMPLETED', 'PARTIALLY_COMPLETED'].includes(b.status)) completed++
+    })
+
+    return { total: batches.length, draft, submitted, completed }
+  }, [batches])
+
+  const toggleSelectObligation = (id: string) => {
+    setSelectedObligationIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -99,369 +130,608 @@ function CreateBatchCard({
     })
   }
 
-  function toggleAll() {
-    if (selectedIds.size === obligations.length) {
-      setSelectedIds(new Set())
+  const toggleSelectAll = () => {
+    if (selectedObligationIds.size === validatedObligations.length) {
+      setSelectedObligationIds(new Set())
     } else {
-      setSelectedIds(new Set(obligations.map((o) => o.id)))
+      setSelectedObligationIds(new Set(validatedObligations.map((o) => o.id)))
     }
   }
 
-  // Calculate total selected amount
-  const selectedTotal = obligations
-    .filter((o) => selectedIds.has(o.id))
-    .reduce((sum, o) => sum + parseFloat(o.amount || '0'), 0)
-
-  const canSubmit = batchRef.trim().length > 0 && selectedIds.size > 0 && !mutation.isPending
-
-  return (
-    <div className="card" style={{ padding: 28, maxWidth: 960, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', paddingBottom: 16, marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#EBF4FE', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <PlusCircle size={20} color="#0070BA" />
-          </div>
-          <div>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#003087', margin: 0 }}>Create Payment Batch</h2>
-            <p style={{ fontSize: '0.8rem', color: '#64748B', margin: 0 }}>
-              Group verified supplier obligations into a consolidated payment instruction.
-            </p>
-          </div>
-        </div>
-        <button className="btn btn-secondary" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
-
-      {isLoading && <div className="loading-state">Loading eligible validated obligations…</div>}
-
-      {!isLoading && obligations.length === 0 && (
-        <div className="empty-state" style={{ padding: 40 }}>
-          <AlertCircle size={32} color="#D97706" style={{ marginBottom: 12 }} />
-          <p style={{ fontWeight: 700, color: '#1E293B', fontSize: '1rem' }}>No VALIDATED obligations found</p>
-          <p className="empty-hint" style={{ marginTop: 6 }}>
-            Only obligations in <code>VALIDATED</code> status can be grouped into batches.
-            Go to the <strong>Obligations</strong> tab to review and validate draft obligations.
-          </p>
-        </div>
-      )}
-
-      {obligations.length > 0 && (
-        <>
-          {/* Section 1: Batch Configuration */}
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#003087', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 12 }}>
-              1. Batch Identification & Reference
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: 6 }}>
-                  Batch Reference Code <span style={{ color: '#DC2626' }}>*</span>
-                </label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. BATCH-2027-001"
-                  value={batchRef}
-                  onChange={(e) => setBatchRef(e.target.value)}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: 6 }}>
-                  Operational Notes (Optional)
-                </label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Q1 Global Vendor Settlement Run"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Section 2: Obligations Selection */}
-          <div style={{ marginBottom: 24 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
-              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#003087', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                2. Select Validated Obligations ({selectedIds.size} of {obligations.length} Selected)
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <span style={{ fontSize: '0.84rem', fontWeight: 700, color: '#059669' }}>
-                  Total: ${selectedTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ height: 32, padding: '0 12px', fontSize: '0.75rem' }}
-                  onClick={toggleAll}
-                >
-                  {selectedIds.size === obligations.length ? 'Deselect All' : 'Select All'}
-                </button>
-              </div>
-            </div>
-
-            <div className="table-wrapper" style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid #E2E8F0', borderRadius: 8 }}>
-              <table className="obligations-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 44, textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.size === obligations.length && obligations.length > 0}
-                        onChange={toggleAll}
-                        style={{ width: 16, height: 16, accentColor: '#0070BA', cursor: 'pointer' }}
-                        aria-label="Select all"
-                      />
-                    </th>
-                    <th>Invoice Ref</th>
-                    <th>Supplier Name</th>
-                    <th className="col-amount">Amount</th>
-                    <th>Due Date</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {obligations.map((ob) => {
-                    const isSelected = selectedIds.has(ob.id)
-                    return (
-                      <tr
-                        key={ob.id}
-                        style={{ cursor: 'pointer', background: isSelected ? '#F0F7FF' : 'transparent' }}
-                        onClick={() => toggleSelect(ob.id)}
-                      >
-                        <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleSelect(ob.id)}
-                            style={{ width: 16, height: 16, accentColor: '#0070BA', cursor: 'pointer' }}
-                          />
-                        </td>
-                        <td>
-                          <code style={{ fontWeight: 700, color: '#003087' }}>{ob.invoice_reference}</code>
-                        </td>
-                        <td>
-                          <span style={{ fontWeight: 600, color: '#0F172A' }}>{ob.supplier.display_name}</span>
-                        </td>
-                        <td className="col-amount" style={{ fontWeight: 800, color: '#0F172A' }}>
-                          {formatAmount(ob.amount, ob.currency)}
-                        </td>
-                        <td style={{ color: '#475569', fontSize: '0.84rem' }}>{ob.due_at}</td>
-                        <td>
-                          <span className="status-badge status-validated">VALIDATED</span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {mutation.isError && (
-            <div className="alert alert-error" style={{ marginBottom: 16 }}>
-              <strong>Failed to create batch:</strong>{' '}
-              {(mutation.error as any)?.detail?.message ||
-                (mutation.error as any)?.error?.message ||
-                'Validation error'}
-            </div>
-          )}
-
-          {/* Action Footer */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #E2E8F0', paddingTop: 18 }}>
-            <div style={{ fontSize: '0.82rem', color: '#64748B' }}>
-              Selected <strong>{selectedIds.size}</strong> obligations totaling{' '}
-              <strong>${selectedTotal.toFixed(2)} USD</strong>
-            </div>
-            <button
-              className="btn btn-paypal-blue"
-              onClick={() => mutation.mutate()}
-              disabled={!canSubmit}
-              style={{ padding: '0 24px', fontSize: '0.92rem' }}
-            >
-              <CheckCircle2 size={16} />
-              <span>{mutation.isPending ? 'Creating Batch…' : `Create Payment Batch (${selectedIds.size})`}</span>
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-// -------------------------------------------------------------------------
-// Main Batches Page (List of Batches + Creation Trigger)
-// -------------------------------------------------------------------------
-
-export default function BatchesPage({ onOpenBatchDetail }: BatchesPageProps = {}) {
-  const [showCreateForm, setShowCreateForm] = useState(false)
-
-  const { data: batches, isLoading, isError } = useQuery({
-    queryKey: ['batches'],
-    queryFn: () => fetchBatches({ limit: 50 }),
-    refetchInterval: 15000,
-  })
+  // Calculate selected total
+  const selectedSum = useMemo(() => {
+    return validatedObligations
+      .filter((o) => selectedObligationIds.has(o.id))
+      .reduce((sum, o) => sum + parseFloat(o.amount || '0'), 0)
+  }, [validatedObligations, selectedObligationIds])
 
   return (
-    <div className="page">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Header */}
-      <div className="page-header" style={{ marginBottom: 24 }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h1 className="page-title" style={{ margin: 0 }}>Payment Batches</h1>
-            <span
+      <PageHeader
+        title="Payment Batches"
+        subtitle="Consolidate validated supplier liabilities into atomic payment runs with maker-checker controls and PayPal Sandbox execution."
+        badge={
+          <span
+            style={{
+              fontSize: '0.72rem',
+              padding: '3px 10px',
+              borderRadius: 'var(--radius-pill)',
+              background: 'var(--pufi-primary-light)',
+              color: 'var(--pufi-primary)',
+              border: '1px solid rgba(22,119,255,0.25)',
+              fontWeight: 700,
+            }}
+          >
+            Maker-Checker Governed
+          </span>
+        }
+        actions={
+          <button
+            onClick={() => {
+              setBatchRef(`BATCH-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`)
+              setIsCreateOpen(true)
+            }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '9px 18px',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--pufi-primary)',
+              border: 'none',
+              color: '#FFFFFF',
+              fontSize: '0.84rem',
+              fontWeight: 650,
+              cursor: 'pointer',
+              boxShadow: 'var(--shadow-sm)',
+              transition: 'all var(--trans-fast)',
+            }}
+          >
+            <PlusCircle size={16} />
+            <span>Create Payment Batch</span>
+          </button>
+        }
+        stats={
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div
               style={{
-                fontSize: '0.72rem',
-                padding: '3px 10px',
-                borderRadius: 999,
-                background: '#F1F5F9',
-                color: '#003087',
-                border: '1px solid #CBD5E1',
-                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-base)',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-pill)',
+                fontSize: '0.8rem',
+                fontWeight: 650,
               }}
             >
-              Maker-Checker Dual Control
-            </span>
+              <Layers size={14} color="var(--pufi-primary)" />
+              <span>Total Batches: <strong>{metrics.total}</strong></span>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'var(--pufi-warning-bg)',
+                border: '1px solid var(--pufi-warning-border)',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-pill)',
+                fontSize: '0.8rem',
+                fontWeight: 650,
+                color: 'var(--pufi-warning-text)',
+              }}
+            >
+              <Clock size={14} />
+              <span>In Preparation: <strong>{metrics.draft}</strong></span>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'var(--pufi-info-bg)',
+                border: '1px solid var(--pufi-info-border)',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-pill)',
+                fontSize: '0.8rem',
+                fontWeight: 650,
+                color: 'var(--pufi-info-text)',
+              }}
+            >
+              <ShieldCheck size={14} />
+              <span>Submitted: <strong>{metrics.submitted}</strong></span>
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                background: 'var(--pufi-success-bg)',
+                border: '1px solid var(--pufi-success-border)',
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-pill)',
+                fontSize: '0.8rem',
+                fontWeight: 650,
+                color: 'var(--pufi-success-text)',
+              }}
+            >
+              <CheckCircle2 size={14} />
+              <span>Settled: <strong>{metrics.completed}</strong></span>
+            </div>
           </div>
-          <p className="page-subtitle" style={{ marginTop: 6 }}>
-            Consolidated payment instructions grouped for multi-rail routing, approval, and PayPal Sandbox execution.
-          </p>
+        }
+      />
+
+      {isError && (
+        <ErrorState
+          title="Failed to Load Payment Batches"
+          message={(error as { error?: { message?: string } })?.error?.message || 'Database could not retrieve batches.'}
+          onRetry={() => refetch()}
+        />
+      )}
+
+      {/* Main Batches Card */}
+      <div
+        style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-base)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: 'var(--shadow-card)',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Search & Filter Bar */}
+        <div
+          style={{
+            padding: '18px 24px',
+            borderBottom: '1px solid var(--border-base)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 16,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ position: 'relative', flex: 1, minWidth: 260, maxWidth: 440 }}>
+            <Search
+              size={15}
+              style={{
+                position: 'absolute',
+                left: 14,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: 'var(--text-muted)',
+              }}
+            />
+            <input
+              type="text"
+              placeholder="Search by batch reference, ID, notes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 16px 9px 38px',
+                fontSize: '0.84rem',
+                borderRadius: 'var(--radius-pill)',
+                border: '1px solid var(--border-base)',
+                background: 'var(--bg-subtle)',
+                color: 'var(--text-primary)',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Filter size={14} color="var(--text-muted)" />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              style={{
+                padding: '7px 12px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border-base)',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-primary)',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              <option value="ALL">All Batch Statuses</option>
+              <option value="DRAFT">Draft</option>
+              <option value="ANALYZED">Analyzed</option>
+              <option value="APPROVED">Approved</option>
+              <option value="SUBMITTED">Submitted to PayPal</option>
+              <option value="COMPLETED">Completed</option>
+            </select>
+          </div>
         </div>
 
-        <div className="page-actions">
-          {!showCreateForm && (
-            <button
-              className="btn btn-paypal-blue"
-              onClick={() => setShowCreateForm(true)}
-            >
-              <PlusCircle size={16} />
-              <span>+ Create New Batch</span>
-            </button>
-          )}
-        </div>
+        {/* Loading */}
+        {isLoading && (
+          <div style={{ padding: 24 }}>
+            <TableSkeleton rows={5} columns={5} />
+          </div>
+        )}
+
+        {/* Empty */}
+        {!isLoading && filteredBatches.length === 0 && (
+          <div style={{ padding: 48 }}>
+            <EmptyState
+              title="No Payment Batches Found"
+              description="No batches match your criteria. Create a new batch from validated obligations to proceed."
+              action={{
+                label: 'Create Payment Batch',
+                onClick: () => setIsCreateOpen(true),
+                icon: <PlusCircle size={15} />,
+              }}
+            />
+          </div>
+        )}
+
+        {/* Batches Table */}
+        {!isLoading && filteredBatches.length > 0 && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+              <thead>
+                <tr
+                  style={{
+                    background: 'var(--bg-subtle)',
+                    borderBottom: '1px solid var(--border-base)',
+                    fontSize: '0.74rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  <th style={{ padding: '12px 20px', fontWeight: 700 }}>Batch Reference</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Lifecycle Status</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700, textAlign: 'center' }}>Obligations</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Created Timestamp</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Approval Metadata</th>
+                  <th style={{ padding: '12px 16px', fontWeight: 700 }}>Notes</th>
+                  <th style={{ padding: '12px 20px', textAlign: 'right' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBatches.map((b: Batch) => (
+                  <tr
+                    key={b.id}
+                    onClick={() => onOpenBatchDetail && onOpenBatchDetail(b.id)}
+                    style={{
+                      borderBottom: '1px solid var(--border-subtle)',
+                      cursor: 'pointer',
+                      transition: 'background var(--trans-fast)',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-surface-hover)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <td style={{ padding: '14px 20px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <code style={{ fontWeight: 800, color: 'var(--pufi-primary)', fontSize: '0.88rem' }}>
+                          {b.batch_reference}
+                        </code>
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                        ID: {b.id.slice(-8)}
+                      </div>
+                    </td>
+                    <td style={{ padding: '14px 16px' }}>
+                      <StatusBadge status={b.status} size="sm" />
+                    </td>
+                    <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                      <span
+                        style={{
+                          background: 'var(--bg-subtle)',
+                          padding: '3px 10px',
+                          borderRadius: 'var(--radius-pill)',
+                          fontWeight: 750,
+                          fontSize: '0.8rem',
+                          color: 'var(--text-primary)',
+                        }}
+                      >
+                        {b.obligation_count} items
+                      </span>
+                    </td>
+                    <td style={{ padding: '14px 16px', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                      {new Date(b.created_at).toLocaleString()}
+                    </td>
+                    <td style={{ padding: '14px 16px', fontSize: '0.82rem' }}>
+                      {b.approved_by ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--pufi-success-text)' }}>
+                          <CheckCircle2 size={13} />
+                          <span>Approved by {b.approved_by}</span>
+                        </div>
+                      ) : (
+                        <span style={{ color: 'var(--text-muted)' }}>Pending Maker-Checker</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '14px 16px', maxWidth: 200 }}>
+                      <span
+                        style={{
+                          fontSize: '0.8rem',
+                          color: 'var(--text-muted)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: 'block',
+                        }}
+                      >
+                        {b.notes || '—'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '14px 20px', textAlign: 'right' }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (onOpenBatchDetail) onOpenBatchDetail(b.id)
+                        }}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          padding: '6px 12px',
+                          borderRadius: 'var(--radius-sm)',
+                          background: 'var(--pufi-primary-light)',
+                          color: 'var(--pufi-primary)',
+                          border: 'none',
+                          fontSize: '0.78rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <span>Manage Batch</span>
+                        <ArrowRight size={13} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Creation Mode */}
-      {showCreateForm ? (
-        <CreateBatchCard
-          onCreated={(newBatch) => {
-            setShowCreateForm(false)
-            if (onOpenBatchDetail) {
-              onOpenBatchDetail(newBatch.id)
-            }
-          }}
-          onCancel={() => setShowCreateForm(false)}
-        />
-      ) : (
-        /* Batches List Mode */
-        <div>
-          {isLoading && (
-            <div className="loading-state" style={{ padding: 60 }}>
-              Loading payment batches…
-            </div>
-          )}
+      {/* Creation Drawer */}
+      <Drawer
+        isOpen={isCreateOpen}
+        onClose={() => setIsCreateOpen(false)}
+        title="Create Payment Batch"
+        subtitle="Group verified obligations into an executable payout package"
+        width={620}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Reference Input */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 6, color: 'var(--text-primary)' }}>
+              Batch Reference Identifier
+            </label>
+            <input
+              type="text"
+              value={batchRef}
+              onChange={(e) => setBatchRef(e.target.value)}
+              placeholder="e.g. BATCH-2026-001"
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border-base)',
+                background: 'var(--bg-subtle)',
+                color: 'var(--text-primary)',
+                fontFamily: 'monospace',
+                fontWeight: 700,
+                fontSize: '0.88rem',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
 
-          {isError && (
-            <div className="alert alert-error">
-              Failed to load batches list.
-            </div>
-          )}
+          {/* Notes */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, marginBottom: 6, color: 'var(--text-primary)' }}>
+              Operational Notes (Optional)
+            </label>
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="e.g. Weekly vendor disbursement cycle"
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border-base)',
+                background: 'var(--bg-subtle)',
+                color: 'var(--text-primary)',
+                fontSize: '0.84rem',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
 
-          {!isLoading && (!batches || batches.length === 0) ? (
-            <div className="card" style={{ padding: 60, textAlign: 'center' }}>
-              <Inbox size={40} color="#94A3B8" style={{ margin: '0 auto 16px' }} />
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#1E293B', marginBottom: 6 }}>
-                No Payment Batches Created Yet
-              </h3>
-              <p style={{ fontSize: '0.85rem', color: '#64748B', maxWidth: 440, margin: '0 auto 20px' }}>
-                Batches consolidate validated obligations for fee analysis, AI decision support, and PayPal Sandbox payout submission.
-              </p>
-              <button
-                className="btn btn-paypal-blue"
-                onClick={() => setShowCreateForm(true)}
+          {/* Obligations Selector */}
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div>
+                <span style={{ fontSize: '0.85rem', fontWeight: 750, color: 'var(--text-primary)' }}>
+                  Select Validated Obligations
+                </span>
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginLeft: 8 }}>
+                  ({selectedObligationIds.size} of {validatedObligations.length} selected)
+                </span>
+              </div>
+              {validatedObligations.length > 0 && (
+                <button
+                  type="button"
+                  onClick={toggleSelectAll}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--pufi-primary)',
+                    fontSize: '0.78rem',
+                    fontWeight: 650,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {selectedObligationIds.size === validatedObligations.length ? 'Deselect All' : 'Select All'}
+                </button>
+              )}
+            </div>
+
+            {isValidatedLoading ? (
+              <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)' }}>
+                Loading eligible validated obligations…
+              </div>
+            ) : validatedObligations.length === 0 ? (
+              <div
+                style={{
+                  padding: 24,
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--pufi-warning-bg)',
+                  border: '1px solid var(--pufi-warning-border)',
+                  color: 'var(--pufi-warning-text)',
+                  fontSize: '0.82rem',
+                }}
               >
-                <PlusCircle size={16} />
-                <span>Create Your First Batch</span>
-              </button>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 20 }}>
-              {batches?.map((batch) => {
-                const isApproved = batch.status === 'APPROVED'
-                const isSubmitted = ['SUBMITTED', 'PROCESSING', 'COMPLETED'].includes(batch.status)
-
-                return (
-                  <div
-                    key={batch.id}
-                    className="card"
-                    style={{
-                      margin: 0,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'space-between',
-                      borderLeft: `4px solid ${isApproved ? '#007934' : isSubmitted ? '#0070BA' : '#CBD5E1'}`,
-                    }}
-                  >
-                    <div>
-                      {/* Batch Header */}
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                        <code style={{ fontSize: '1rem', fontWeight: 800, color: '#003087' }}>
-                          {batch.batch_reference}
-                        </code>
-                        <StatusPill status={batch.status} />
-                      </div>
-
-                      {/* Notes / Description */}
-                      <p style={{ fontSize: '0.82rem', color: '#64748B', marginBottom: 16, minHeight: 36 }}>
-                        {batch.notes || 'No description provided for this batch run.'}
-                      </p>
-
-                      {/* Metrics Pill Grid */}
-                      <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: 12, marginBottom: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>No VALIDATED obligations found</div>
+                Only obligations in <code>VALIDATED</code> status can be added to a batch. Validate draft invoices in Payment Obligations first.
+              </div>
+            ) : (
+              <div
+                style={{
+                  maxHeight: 280,
+                  overflowY: 'auto',
+                  border: '1px solid var(--border-base)',
+                  borderRadius: 'var(--radius-md)',
+                }}
+              >
+                {validatedObligations.map((ob) => {
+                  const isChecked = selectedObligationIds.has(ob.id)
+                  return (
+                    <div
+                      key={ob.id}
+                      onClick={() => toggleSelectObligation(ob.id)}
+                      style={{
+                        padding: '10px 14px',
+                        borderBottom: '1px solid var(--border-subtle)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        background: isChecked ? 'var(--pufi-primary-light)' : 'var(--bg-surface)',
+                        cursor: 'pointer',
+                        transition: 'background var(--trans-fast)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {}} // Controlled by container onClick
+                          style={{ cursor: 'pointer' }}
+                        />
                         <div>
-                          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748B', fontWeight: 700 }}>
-                            Obligations
+                          <div style={{ fontWeight: 650, fontSize: '0.84rem', color: 'var(--text-primary)' }}>
+                            {ob.supplier.display_name}
                           </div>
-                          <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
-                            {batch.obligation_count} items
-                          </div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', color: '#64748B', fontWeight: 700 }}>
-                            Created Date
-                          </div>
-                          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginTop: 2 }}>
-                            {new Date(batch.created_at).toLocaleDateString()}
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            Inv: <code>{ob.invoice_reference}</code> • Due {ob.due_at}
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Action Footer */}
-                    <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <code style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
-                        ID: {batch.id.slice(0, 8)}…
-                      </code>
-
-                      {onOpenBatchDetail && (
-                        <button
-                          className={isApproved ? 'btn btn-paypal-gold' : 'btn btn-secondary'}
-                          style={{ height: 34, fontSize: '0.78rem', padding: '0 14px' }}
-                          onClick={() => onOpenBatchDetail(batch.id)}
-                        >
-                          <span>{isApproved ? 'Execute PayPal Payout →' : 'Review & Route →'}</span>
-                        </button>
-                      )}
+                      <strong className="num-tabular" style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>
+                        {formatAmount(ob.amount, ob.currency)}
+                      </strong>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Running Total Strip */}
+          <div
+            style={{
+              padding: '14px 18px',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--bg-subtle)',
+              border: '1px solid var(--border-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              Total Batch Commitment:
+            </span>
+            <strong className="num-tabular" style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+              {formatAmount(selectedSum, 'USD')}
+            </strong>
+          </div>
+
+          {/* Mutation error */}
+          {createMutation.isError && (
+            <div
+              style={{
+                padding: '10px 14px',
+                borderRadius: 'var(--radius-sm)',
+                background: 'var(--pufi-danger-bg)',
+                border: '1px solid var(--pufi-danger-border)',
+                color: 'var(--pufi-danger-text)',
+                fontSize: '0.8rem',
+              }}
+            >
+              ⚠ Failed to create batch: {(createMutation.error as { error?: { message?: string } })?.error?.message || 'Check validation status of selected obligations.'}
             </div>
           )}
+
+          {/* Action Button */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+            <button
+              onClick={() => setIsCreateOpen(false)}
+              style={{
+                padding: '8px 16px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border-base)',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-secondary)',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => createMutation.mutate()}
+              disabled={createMutation.isPending || selectedObligationIds.size === 0 || !batchRef.trim()}
+              style={{
+                padding: '8px 22px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                background: 'var(--pufi-primary)',
+                color: '#FFFFFF',
+                fontSize: '0.84rem',
+                fontWeight: 650,
+                cursor: createMutation.isPending || selectedObligationIds.size === 0 ? 'not-allowed' : 'pointer',
+                opacity: createMutation.isPending || selectedObligationIds.size === 0 ? 0.6 : 1,
+                boxShadow: 'var(--shadow-sm)',
+              }}
+            >
+              {createMutation.isPending ? 'Grouping Batch…' : `Create Batch (${selectedObligationIds.size} Obligations)`}
+            </button>
+          </div>
         </div>
-      )}
+      </Drawer>
     </div>
   )
 }

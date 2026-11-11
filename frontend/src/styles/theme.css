@@ -1,0 +1,221 @@
+/* PUFI ENTERPRISE 2.0 — DESIGN SYSTEM & THEME TOKENS
+   Inspired by Mercury (clean fintech hierarchy), Stripe (clarity & precision),
+   Ramp (analytics), and CashPod (subtle depth & motion). */
+
+:root {
+  /* Core Brand & Fintech Accents */
+  --pufi-primary: #1677FF;
+  --pufi-primary-hover: #0E5FD9;
+  --pufi-primary-light: #EBF4FE;
+  --pufi-primary-glow: rgba(22, 119, 255, 0.15);
+
+  --pufi-secondary: #42A5FF;
+  --pufi-cyan: #00CFDE;
+
+  /* Official PayPal Accents */
+  --pp-blue: #0070BA;
+  --pp-navy: #003087;
+  --pp-gold: #FFC439;
+  --pp-gold-hover: #F2BA36;
+  --pp-gold-text: #003087;
+
+  /* Semantic Feedback */
+  --pufi-success: #16A779;
+  --pufi-success-bg: #E8F8F2;
+  --pufi-success-border: #A3E5CD;
+  --pufi-success-text: #0E684B;
+
+  --pufi-warning: #E9A23B;
+  --pufi-warning-bg: #FEF6EB;
+  --pufi-warning-border: #FCD8A5;
+  --pufi-warning-text: #965B0A;
+
+  --pufi-danger: #DC5353;
+  --pufi-danger-bg: #FDF2F2;
+  --pufi-danger-border: #F7B5B5;
+  --pufi-danger-text: #8E2323;
+
+  --pufi-info: #0284C7;
+  --pufi-info-bg: #F0F9FF;
+  --pufi-info-border: #BAE6FD;
+  --pufi-info-text: #0369A1;
+
+  /* Surfaces & Canvas (Light Mode) */
+  --bg-app: #F5F7FB;
+  --bg-surface: #FFFFFF;
+  --bg-surface-hover: #F8FAFD;
+  --bg-surface-active: #EDF2F9;
+  --bg-subtle: #F0F3F8;
+
+  /* Sidebar Tokens (Premium Deep Navy) */
+  --bg-sidebar: #101C32;
+  --bg-sidebar-hover: #192A45;
+  --bg-sidebar-active: #1D3557;
+  --border-sidebar: #1E2D48;
+  --text-sidebar: #CBD5E1;
+  --text-sidebar-muted: #8494AB;
+  --text-sidebar-active: #FFFFFF;
+
+  /* Typography Colors */
+  --text-primary: #17243A;
+  --text-secondary: #5F6E84;
+  --text-muted: #8E9BAE;
+  --text-inverse: #FFFFFF;
+
+  /* Borders & Dividers */
+  --border-subtle: #EAEFF5;
+  --border-base: #E2E8F0;
+  --border-strong: #CBD5E1;
+  --border-focus: #1677FF;
+
+  /* Elevations & Shadows */
+  --shadow-xs: 0 1px 2px rgba(16, 28, 50, 0.04);
+  --shadow-sm: 0 2px 4px rgba(16, 28, 50, 0.05);
+  --shadow-card: 0 2px 8px -1px rgba(16, 28, 50, 0.06), 0 1px 2px -1px rgba(16, 28, 50, 0.04);
+  --shadow-card-hover: 0 8px 24px -4px rgba(16, 28, 50, 0.08), 0 2px 6px -1px rgba(16, 28, 50, 0.04);
+  --shadow-drawer: -8px 0 32px rgba(16, 28, 50, 0.12);
+  --shadow-modal: 0 20px 48px -10px rgba(16, 28, 50, 0.2);
+
+  /* Radii */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-pill: 9999px;
+
+  /* Animation & Transition */
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --trans-fast: 150ms var(--ease-spring);
+  --trans-normal: 240ms var(--ease-spring);
+  --trans-slow: 350ms var(--ease-spring);
+}
+
+/* Dark Mode Tokens */
+[data-theme='dark'] {
+  --bg-app: #0B111E;
+  --bg-surface: #121D33;
+  --bg-surface-hover: #17243E;
+  --bg-surface-active: #1D2D4D;
+  --bg-subtle: #16223A;
+
+  --bg-sidebar: #090F1B;
+  --bg-sidebar-hover: #131F35;
+  --bg-sidebar-active: #1A2A47;
+  --border-sidebar: #16243D;
+  --text-sidebar: #CBD5E1;
+  --text-sidebar-muted: #64748B;
+  --text-sidebar-active: #FFFFFF;
+
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --text-inverse: #0B111E;
+
+  --border-subtle: #1A2844;
+  --border-base: #223253;
+  --border-strong: #2F426B;
+  --border-focus: #42A5FF;
+
+  --pufi-primary-light: rgba(22, 119, 255, 0.15);
+  --pufi-success-bg: rgba(22, 167, 121, 0.15);
+  --pufi-success-border: rgba(22, 167, 121, 0.35);
+  --pufi-success-text: #4ADE80;
+
+  --pufi-warning-bg: rgba(233, 162, 59, 0.15);
+  --pufi-warning-border: rgba(233, 162, 59, 0.35);
+  --pufi-warning-text: #FBBF24;
+
+  --pufi-danger-bg: rgba(220, 83, 83, 0.15);
+  --pufi-danger-border: rgba(220, 83, 83, 0.35);
+  --pufi-danger-text: #F87171;
+
+  --pufi-info-bg: rgba(2, 132, 199, 0.15);
+  --pufi-info-border: rgba(2, 132, 199, 0.35);
+  --pufi-info-text: #38BDF8;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.4);
+  --shadow-card: 0 2px 8px -1px rgba(0, 0, 0, 0.35), 0 1px 2px -1px rgba(0, 0, 0, 0.2);
+  --shadow-card-hover: 0 8px 24px -4px rgba(0, 0, 0, 0.45);
+  --shadow-drawer: -8px 0 32px rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 20px 48px -10px rgba(0, 0, 0, 0.7);
+}
+
+/* Global Reset & Base Typography */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  transition: background-color var(--trans-normal), color var(--trans-normal);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Tabular Financial Numbers */
+.num-tabular {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Glassmorphism Accents */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+}
+[data-theme='dark'] .glass-panel {
+  background: rgba(18, 29, 51, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-base);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseGlow {
+  0% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.08); opacity: 0.5; }
+  100% { transform: scale(1); opacity: 0.9; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--trans-normal) forwards;
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, var(--bg-subtle) 25%, var(--bg-surface-hover) 50%, var(--bg-subtle) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite;
+  border-radius: var(--radius-sm);
+}

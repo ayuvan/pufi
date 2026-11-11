@@ -106,6 +106,9 @@ class Supplier(Base):
     # Preferred settlement currency (may differ from obligation currency)
     preferred_currency: str = Column(String(3), nullable=True)
 
+    # Configurable Sandbox recipient account for PayPal Sandbox payouts
+    sandbox_recipient_email: str = Column(String(255), nullable=True)
+
     created_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
 
     # Relationships
@@ -239,7 +242,7 @@ class PaymentBatch(Base):
         UniqueConstraint("business_id", "batch_reference", name="uq_batch_business_ref"),
         CheckConstraint(
             "status IN ('DRAFT','PENDING_APPROVAL','APPROVED','REJECTED',"
-            "'SUBMITTED','COMPLETED','PARTIALLY_COMPLETED','FAILED','CANCELLED')",
+            "'SUBMITTED','UNKNOWN','COMPLETED','PARTIALLY_COMPLETED','FAILED','CANCELLED')",
             name="ck_batch_status_valid",
         ),
     )
@@ -577,6 +580,10 @@ class AuditEvent(Base):
 
     # Sanitized detail JSON (no secrets)
     details_redacted: str = Column(Text, nullable=True)
+
+    # Phase 5: Cryptographic Hash Chaining (tamper-evident audit trail)
+    prev_hash: str = Column(String(64), nullable=True)
+    event_hash: str = Column(String(64), nullable=True)
 
     created_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
 

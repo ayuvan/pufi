@@ -80,6 +80,7 @@ def approve_batch(
     Does NOT raise exceptions for business-rule failures — only for
     unexpected DB errors.
     """
+    now = datetime.now(timezone.utc)
 
     # --- 1. Load batch ---
     batch = db.query(PaymentBatch).filter(PaymentBatch.id == batch_id).first()
@@ -153,7 +154,17 @@ def approve_batch(
             batch_id, approver_id, selected_provider, confirmed_total, confirmed_currency, routing_strategy,
         )
 
-    # --- 6. Selected provider must be in eligible routes from analysis ---
+    # --- 6. Analysis expiry and eligible routes verification ---
+    rec_time = ai_rec.created_at
+    if rec_time.tzinfo is None:
+        rec_time = rec_time.replace(tzinfo=timezone.utc)
+    if (now - rec_time).total_seconds() > 86400:
+        return _fail(
+            "ANALYSIS_EXPIRED",
+            "The batch route analysis was performed more than 24 hours ago. Re-run financial route analysis before approving.",
+            batch_id, approver_id, selected_provider, confirmed_total, confirmed_currency, routing_strategy,
+        )
+
     try:
         rec_data = json.loads(ai_rec.recommendation_json)
     except json.JSONDecodeError:
@@ -172,7 +183,14 @@ def approve_batch(
     if not eligible_codes and rec_data.get("recommended_route"):
         eligible_codes = [rec_data["recommended_route"]]
 
-    if eligible_codes and selected_provider not in eligible_codes:
+    if not eligible_codes:
+        return _fail(
+            "NO_ELIGIBLE_PROVIDERS",
+            "Analysis identified zero eligible providers for this batch. Re-run route analysis or resolve eligibility constraints.",
+            batch_id, approver_id, selected_provider, confirmed_total, confirmed_currency, routing_strategy,
+        )
+
+    if selected_provider not in eligible_codes:
         return _fail(
             "PROVIDER_NOT_ELIGIBLE",
             f"Provider {selected_provider!r} was not in the eligible routes from the last analysis. "

@@ -1,4 +1,5 @@
 /* PUFI — PayPal Light Theme & Enterprise Financial Coordination Styles */
+@import "./styles/theme.css";
 @import "ag-grid-community/styles/ag-grid.css";
 @import "ag-grid-community/styles/ag-theme-quartz.css";
 
