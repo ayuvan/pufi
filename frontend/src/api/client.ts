@@ -130,9 +130,11 @@ export interface BatchCreateRequest {
 // Core fetch helper
 // -------------------------------------------------------------------------
 
+const DEMO_API_KEY = (import.meta as any).env?.VITE_DEMO_API_KEY || ''
+
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: { 'Content-Type': 'application/json', ...(DEMO_API_KEY ? { 'X-Api-Key': DEMO_API_KEY } : {}), ...(options?.headers as Record<string, string>) },
     ...options,
   })
   if (!res.ok) {
