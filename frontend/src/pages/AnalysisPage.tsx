@@ -1,15 +1,14 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   fetchBatches,
   fetchBatchAnalysis,
-  type BatchAnalysis,
   type ProviderRoute,
 } from '../api/client'
 import { PageHeader } from '../components/layout/PageHeader'
 import { StatusBadge } from '../components/common/StatusBadge'
 import { ErrorState } from '../components/common/ErrorState'
-import { SkeletonBox } from '../components/common/LoadingSkeleton'
+import { EmptyState } from '../components/common/EmptyState'
 import {
   ComparativeRouteBarChart,
   type RouteBarItem,
@@ -21,6 +20,9 @@ import {
   Layers,
   CheckCircle2,
   Info,
+  Cpu,
+  RefreshCw,
+  Clock,
 } from 'lucide-react'
 
 type Strategy = 'LOWEST_COST' | 'FASTEST' | 'BALANCED'
@@ -37,6 +39,25 @@ function formatMoney(val: string | null | undefined, currency: string = 'USD'): 
   }).format(num)
 }
 
+function formatErrorMessage(err: unknown): string {
+  if (!err) return 'Unknown error'
+  if (typeof err === 'string') return err
+  const obj = err as Record<string, any>
+  if (obj.detail) {
+    if (typeof obj.detail === 'string') return obj.detail
+    if (typeof obj.detail === 'object') {
+      if (obj.detail.message) return String(obj.detail.message)
+      if (obj.detail.error) return String(obj.detail.error)
+      if (Array.isArray(obj.detail)) {
+        return obj.detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+      }
+    }
+  }
+  if (obj.error?.message) return String(obj.error.message)
+  if (obj.message) return String(obj.message)
+  return JSON.stringify(err)
+}
+
 export default function AnalysisPage() {
   const [selectedBatchId, setSelectedBatchId] = useState<string>('')
   const [strategy, setStrategy] = useState<Strategy>('LOWEST_COST')
@@ -47,27 +68,27 @@ export default function AnalysisPage() {
     queryFn: () => fetchBatches({ limit: 50 }),
   })
 
-  // Set default batch
+  // Set default batch if none selected
   useEffect(() => {
     if (batches && batches.length > 0 && !selectedBatchId) {
       setSelectedBatchId(batches[0].id)
     }
   }, [batches, selectedBatchId])
 
-  // Run analysis mutation
-  const analysisMutation = useMutation({
-    mutationFn: (vars: { id: string; strat: Strategy }) =>
-      fetchBatchAnalysis(vars.id, vars.strat),
+  // Run analysis via useQuery for caching and automatic reactivity
+  const {
+    data: analysis,
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['batchAnalysis', selectedBatchId, strategy],
+    queryFn: () => fetchBatchAnalysis(selectedBatchId, strategy),
+    enabled: !!selectedBatchId,
+    staleTime: 60000,
   })
-
-  // Automatically analyze when batch or strategy changes
-  useEffect(() => {
-    if (selectedBatchId) {
-      analysisMutation.mutate({ id: selectedBatchId, strat: strategy })
-    }
-  }, [selectedBatchId, strategy])
-
-  const analysis: BatchAnalysis | undefined = analysisMutation.data
 
   // Prepare chart comparison data
   const comparisonItems: RouteBarItem[] = useMemo(() => {
@@ -100,35 +121,49 @@ export default function AnalysisPage() {
               fontWeight: 700,
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 5,
             }}
           >
-            <Sparkles size={13} />
-            Gemini Advisory Active
+            <Sparkles size={12} />
+            <span>Gemini Advisory Active</span>
           </span>
         }
       />
 
-      {/* Control Strip: Batch Selector & Strategy */}
+      {/* Control Card: Batch Select + Strategy Selector */}
       <div
         style={{
           background: 'var(--bg-surface)',
           border: '1px solid var(--border-base)',
           borderRadius: 'var(--radius-lg)',
           padding: '20px 24px',
-          boxShadow: 'var(--shadow-card)',
           display: 'flex',
-          alignItems: 'center',
           justifyContent: 'space-between',
+          alignItems: 'center',
           flexWrap: 'wrap',
           gap: 16,
+          boxShadow: 'var(--shadow-card)',
         }}
       >
-        {/* Batch Select */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 280 }}>
-          <Layers size={18} color="var(--pufi-primary)" />
+        {/* Batch Select Dropdown */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 320, flex: 1 }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--pufi-primary-light)',
+              color: 'var(--pufi-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <Layers size={18} />
+          </div>
           <div style={{ flex: 1 }}>
-            <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase' }}>
+            <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>
               Select Active Batch
             </label>
             <select
@@ -139,11 +174,10 @@ export default function AnalysisPage() {
                 padding: '8px 12px',
                 borderRadius: 'var(--radius-sm)',
                 border: '1px solid var(--border-base)',
-                background: 'var(--bg-subtle)',
+                background: 'var(--bg-app)',
                 color: 'var(--text-primary)',
-                fontSize: '0.86rem',
-                fontWeight: 700,
-                outline: 'none',
+                fontSize: '0.84rem',
+                fontWeight: 650,
                 cursor: 'pointer',
               }}
             >
@@ -156,65 +190,132 @@ export default function AnalysisPage() {
           </div>
         </div>
 
-        {/* Strategy Selector Tabs */}
-        <div>
-          <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 6 }}>
-            Routing Policy Objective
-          </label>
-          <div style={{ display: 'flex', gap: 6, background: 'var(--bg-subtle)', padding: 3, borderRadius: 'var(--radius-md)' }}>
-            {(
-              [
-                { id: 'LOWEST_COST', label: 'Lowest Cost', icon: <TrendingDown size={14} /> },
-                { id: 'FASTEST', label: 'Fastest Settlement', icon: <Zap size={14} /> },
-                { id: 'BALANCED', label: 'Balanced Policy', icon: <Sparkles size={14} /> },
-              ] as const
-            ).map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setStrategy(s.id)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '6px 14px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: 'none',
-                  background: strategy === s.id ? 'var(--bg-surface)' : 'transparent',
-                  color: strategy === s.id ? 'var(--pufi-primary)' : 'var(--text-secondary)',
-                  fontSize: '0.78rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  boxShadow: strategy === s.id ? 'var(--shadow-xs)' : 'none',
-                  transition: 'all var(--trans-fast)',
-                }}
-              >
-                {s.icon}
-                <span>{s.label}</span>
-              </button>
-            ))}
+        {/* Strategy Selector Tabs + Refresh Action */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 6 }}>
+              Routing Policy Objective
+            </label>
+            <div style={{ display: 'flex', gap: 6, background: 'var(--bg-subtle)', padding: 3, borderRadius: 'var(--radius-md)' }}>
+              {(
+                [
+                  { id: 'LOWEST_COST', label: 'Lowest Cost', icon: <TrendingDown size={14} /> },
+                  { id: 'FASTEST', label: 'Fastest Settlement', icon: <Zap size={14} /> },
+                  { id: 'BALANCED', label: 'Balanced Policy', icon: <Sparkles size={14} /> },
+                ] as const
+              ).map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => setStrategy(s.id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '6px 14px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: 'none',
+                    background: strategy === s.id ? 'var(--bg-surface)' : 'transparent',
+                    color: strategy === s.id ? 'var(--pufi-primary)' : 'var(--text-secondary)',
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: strategy === s.id ? 'var(--shadow-xs)' : 'none',
+                    transition: 'all var(--trans-fast)',
+                  }}
+                >
+                  {s.icon}
+                  <span>{s.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
+
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching || !selectedBatchId}
+            title="Re-run route analysis"
+            style={{
+              marginTop: 18,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '8px 14px',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--pufi-primary)',
+              border: 'none',
+              color: '#FFFFFF',
+              fontSize: '0.8rem',
+              fontWeight: 650,
+              cursor: isFetching ? 'not-allowed' : 'pointer',
+              opacity: isFetching ? 0.75 : 1,
+            }}
+          >
+            <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
+            <span>{isFetching ? 'Analyzing…' : 'Re-run Analysis'}</span>
+          </button>
         </div>
       </div>
 
-      {/* Loading state */}
-      {analysisMutation.isPending && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          <SkeletonBox height={120} />
-          <SkeletonBox height={260} />
+      {/* Loading state: Animated processing card */}
+      {isLoading && (
+        <div
+          style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border-base)',
+            borderRadius: 'var(--radius-lg)',
+            padding: '54px 32px',
+            textAlign: 'center',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 16,
+            boxShadow: 'var(--shadow-card)',
+          }}
+        >
+          <div
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: '50%',
+              background: 'var(--pufi-primary-light)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--pufi-primary)',
+            }}
+          >
+            <Cpu size={26} className="animate-spin" />
+          </div>
+          <div>
+            <h4 style={{ margin: '0 0 6px 0', fontSize: '1.05rem', fontWeight: 750, color: 'var(--text-primary)' }}>
+              Evaluating Multi-Provider Routes & Consulting Gemini AI…
+            </h4>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', maxWidth: 480, lineHeight: 1.5 }}>
+              Evaluating provider eligibility, simulated FX quote spreads, and executing Gemini decision-support for strategy <strong>{strategy.replace('_', ' ')}</strong>.
+            </p>
+          </div>
         </div>
       )}
 
       {/* Error state */}
-      {analysisMutation.isError && (
+      {isError && !isLoading && (
         <ErrorState
           title="Analysis Execution Failed"
-          message={(analysisMutation.error as { error?: { message?: string } })?.error?.message || 'Could not analyze routes for the selected batch.'}
-          onRetry={() => selectedBatchId && analysisMutation.mutate({ id: selectedBatchId, strat: strategy })}
+          message={formatErrorMessage(error)}
+          onRetry={() => refetch()}
+        />
+      )}
+
+      {/* Empty State when no batch or analysis available */}
+      {!analysis && !isLoading && !isError && (
+        <EmptyState
+          title="No Batch Selected"
+          description="Please select an active payment batch above to view multi-provider route analysis and Gemini advisory recommendations."
         />
       )}
 
       {/* Main Analysis Display */}
-      {analysis && !analysisMutation.isPending && (
+      {analysis && !isLoading && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           {/* AI Recommendation Banner */}
           {analysis.ai_recommendation && (
@@ -310,6 +411,32 @@ export default function AnalysisPage() {
                 </div>
               )}
 
+              {/* Warnings if any */}
+              {analysis.ai_recommendation.warnings?.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--pufi-warning-text)', fontWeight: 700, textTransform: 'uppercase' }}>
+                    Regulatory & Environment Warnings:
+                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {analysis.ai_recommendation.warnings.map((w, i) => (
+                      <div
+                        key={i}
+                        style={{
+                          fontSize: '0.76rem',
+                          color: 'var(--text-secondary)',
+                          padding: '6px 10px',
+                          background: 'var(--bg-surface)',
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        • {w}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Disclaimer */}
               <div
                 style={{
@@ -375,7 +502,7 @@ export default function AnalysisPage() {
                     display: 'flex',
                     flexDirection: 'column',
                     justifyContent: 'space-between',
-                    opacity: route.eligible ? 1 : 0.6,
+                    opacity: route.eligible ? 1 : 0.65,
                     position: 'relative',
                   }}
                 >
@@ -472,8 +599,9 @@ export default function AnalysisPage() {
                   </div>
 
                   {/* Quote expiry */}
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', paddingTop: 10, borderTop: '1px solid var(--border-subtle)' }}>
-                    Quote: {route.quote_label} • {route.quote_source}
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', paddingTop: 10, borderTop: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Clock size={12} />
+                    <span>Quote: {route.quote_label} • {route.quote_source}</span>
                   </div>
                 </div>
               )
