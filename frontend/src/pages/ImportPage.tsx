@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
+  UploadCloud,
+  Zap,
+} from 'lucide-react'
+import {
   importObligations,
   type ImportRowResult,
   type ImportResponse,
@@ -29,7 +33,7 @@ const EXAMPLE_JSON = JSON.stringify(
       amount: '1250.00',
       currency: 'USD',
       due_at: '2027-01-31',
-      notes: 'Q1 services',
+      notes: 'Q1 services via Zapier Webhook',
     },
     {
       supplier_reference: 'SUP-002',
@@ -37,6 +41,15 @@ const EXAMPLE_JSON = JSON.stringify(
       amount: '800.50',
       currency: 'EUR',
       due_at: '2027-02-15',
+      notes: 'Cloud infrastructure support',
+    },
+    {
+      supplier_reference: 'SUP-003',
+      invoice_reference: 'INV-2027-003',
+      amount: '3150.00',
+      currency: 'GBP',
+      due_at: '2027-03-01',
+      notes: 'Hardware procurement (Channel3 Sync)',
     },
   ],
   null,
@@ -49,12 +62,12 @@ const EXAMPLE_JSON = JSON.stringify(
 
 function RowResultBadge({ status }: { status: ImportRowResult['status'] }) {
   const configs = {
-    ACCEPTED: { label: '✓ Accepted', cls: 'import-badge-accepted' },
-    DUPLICATE: { label: '⚠ Duplicate', cls: 'import-badge-duplicate' },
-    INVALID: { label: '✗ Invalid', cls: 'import-badge-invalid' },
+    ACCEPTED: { label: '✓ Accepted', cls: 'status-validated' },
+    DUPLICATE: { label: '⚠ Duplicate', cls: 'status-hold' },
+    INVALID: { label: '✗ Invalid', cls: 'status-failed' },
   }
   const { label, cls } = configs[status]
-  return <span className={`import-badge ${cls}`}>{label}</span>
+  return <span className={`status-badge ${cls}`}>{label}</span>
 }
 
 // -------------------------------------------------------------------------
@@ -63,24 +76,26 @@ function RowResultBadge({ status }: { status: ImportRowResult['status'] }) {
 
 function ImportSummary({ result }: { result: ImportResponse }) {
   return (
-    <div className="import-summary">
-      <div className="import-summary-title">Import Summary</div>
-      <div className="import-summary-counts">
+    <div className="import-summary" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, padding: '18px 24px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
+      <div className="import-summary-title" style={{ fontWeight: 700, color: '#003087', fontSize: '0.88rem' }}>
+        Batch Ingestion Results
+      </div>
+      <div className="import-summary-counts" style={{ display: 'flex', gap: 32, marginTop: 12 }}>
         <div className="summary-count accepted">
-          <span className="count-num">{result.accepted}</span>
+          <span className="count-num" style={{ color: '#007934', fontWeight: 800 }}>{result.accepted}</span>
           <span className="count-label">Accepted</span>
         </div>
         <div className="summary-count duplicate">
-          <span className="count-num">{result.duplicate}</span>
-          <span className="count-label">Duplicate</span>
+          <span className="count-num" style={{ color: '#B7791F', fontWeight: 800 }}>{result.duplicate}</span>
+          <span className="count-label">Duplicates Flagged</span>
         </div>
         <div className="summary-count invalid">
-          <span className="count-num">{result.invalid}</span>
-          <span className="count-label">Invalid</span>
+          <span className="count-num" style={{ color: '#D9383A', fontWeight: 800 }}>{result.invalid}</span>
+          <span className="count-label">Invalid Rejected</span>
         </div>
         <div className="summary-count total">
-          <span className="count-num">{result.total_rows}</span>
-          <span className="count-label">Total</span>
+          <span className="count-num" style={{ color: '#0F172A', fontWeight: 800 }}>{result.total_rows}</span>
+          <span className="count-label">Total Processed</span>
         </div>
       </div>
     </div>
@@ -94,12 +109,12 @@ function ImportSummary({ result }: { result: ImportResponse }) {
 export default function ImportPage() {
   const [jsonText, setJsonText] = useState('')
   const [parseError, setParseError] = useState<string | null>(null)
+  const [showZapierGuide, setShowZapierGuide] = useState(false)
   const queryClient = useQueryClient()
 
   const mutation = useMutation({
     mutationFn: (rows: ObligationImportRow[]) => importObligations(rows),
     onSuccess: () => {
-      // Invalidate the obligations list so the main table refreshes
       queryClient.invalidateQueries({ queryKey: ['obligations'] })
     },
   })
@@ -131,24 +146,81 @@ export default function ImportPage() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Import Obligations</h1>
+          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span>Import & Ingestion</span>
+            <span
+              style={{
+                fontSize: '0.72rem',
+                padding: '3px 10px',
+                borderRadius: 999,
+                background: '#FFF3E0',
+                color: '#FF6C37',
+                border: '1px solid #FFE0B2',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <Zap size={12} color="#FF6C37" />
+              Zapier & Channel3 Ready
+            </span>
+          </h1>
           <p className="page-subtitle">
-            Paste a JSON array of obligation rows. Each row is validated independently.
-            Invalid and duplicate rows are reported but never inserted.
+            Ingest supplier obligations via JSON batch, Zapier Webhooks, or Channel3 ERP connectors.
           </p>
         </div>
         <div className="page-actions">
+          <button
+            className="btn btn-secondary"
+            onClick={() => setShowZapierGuide(!showZapierGuide)}
+            style={{ fontSize: '0.8rem' }}
+          >
+            <Zap size={14} color="#FF6C37" />
+            {showZapierGuide ? 'Hide Zapier Guide' : 'Zapier Webhook Config'}
+          </button>
           <button className="btn btn-secondary" onClick={handleLoadExample}>
-            Load Example
+            Load Sample Payload
           </button>
         </div>
       </div>
 
+      {/* Zapier / ERP Webhook Integration Card */}
+      {showZapierGuide && (
+        <div className="panel" style={{ borderLeft: '4px solid #FF6C37', background: '#FFFDFB' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Zap size={18} color="#FF6C37" />
+            <strong style={{ color: '#003087', fontSize: '0.95rem' }}>Automated Zapier Webhook Trigger</strong>
+          </div>
+          <p style={{ fontSize: '0.82rem', color: '#475569', marginBottom: 12 }}>
+            You can connect QuickBooks, Xero, or Google Sheets to PUFI using Zapier Webhooks. Whenever a new invoice is approved in your accounting system, Zapier triggers PUFI's ingestion endpoint:
+          </p>
+          <pre style={{ background: '#F1F5F9', padding: '10px 14px', borderRadius: 6, fontSize: '0.76rem', color: '#0F172A', overflow: 'auto' }}>
+{`POST http://localhost:8000/api/v1/obligations/import
+Content-Type: application/json
+
+[
+  {
+    "supplier_reference": "{{Zapier.SupplierID}}",
+    "invoice_reference": "{{Zapier.InvoiceNumber}}",
+    "amount": "{{Zapier.TotalAmount}}",
+    "currency": "USD",
+    "due_at": "{{Zapier.DueDate}}",
+    "notes": "Ingested via Zapier trigger"
+  }
+]`}
+          </pre>
+        </div>
+      )}
+
       {/* JSON input area */}
-      <div className="import-input-section">
-        <label htmlFor="json-input" className="import-label">
-          Obligation JSON (array)
+      <div className="panel">
+        <label htmlFor="json-input" className="form-label" style={{ fontWeight: 700, color: '#003087' }}>
+          Paste Obligation JSON Payload (Array)
         </label>
+        <p style={{ fontSize: '0.78rem', color: '#64748B', marginBottom: 12 }}>
+          Schema conforms to APIMatic OpenAPI 3.1 specification. Duplicate references are automatically quarantined.
+        </p>
         <textarea
           id="json-input"
           className="import-textarea"
@@ -158,23 +230,25 @@ export default function ImportPage() {
             setParseError(null)
           }}
           placeholder='[{"supplier_reference":"SUP-001","invoice_reference":"INV-001","amount":"500.00","currency":"USD","due_at":"2027-01-15"}]'
-          rows={12}
+          rows={10}
           spellCheck={false}
+          style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}
         />
 
         {parseError && (
-          <div className="alert alert-error" role="alert">
+          <div className="alert alert-error" role="alert" style={{ marginTop: 12 }}>
             <strong>Parse error:</strong> {parseError}
           </div>
         )}
 
-        <div className="import-actions">
+        <div className="import-actions" style={{ display: 'flex', gap: 10, marginTop: 14 }}>
           <button
-            className="btn btn-primary"
+            className="btn btn-paypal-blue"
             onClick={handleImport}
             disabled={mutation.isPending || !jsonText.trim()}
           >
-            {mutation.isPending ? 'Importing…' : 'Import Obligations'}
+            <UploadCloud size={16} />
+            {mutation.isPending ? 'Validating & Importing…' : 'Process Ingestion'}
           </button>
           {(importResult || mutation.isError) && (
             <button
@@ -190,7 +264,7 @@ export default function ImportPage() {
       {/* API error */}
       {mutation.isError && (
         <div className="alert alert-error" role="alert">
-          <strong>Import failed.</strong>{' '}
+          <strong>Import failed:</strong>{' '}
           {(mutation.error as { error?: { message?: string } })?.error?.message ?? 'Unknown error'}
         </div>
       )}
@@ -200,15 +274,15 @@ export default function ImportPage() {
         <div className="import-results">
           <ImportSummary result={importResult} />
 
-          <div className="table-wrapper" role="region" aria-label="Import results">
+          <div className="table-wrapper" role="region" aria-label="Import results" style={{ marginTop: 16 }}>
             <table className="obligations-table">
               <thead>
                 <tr>
                   <th scope="col">#</th>
                   <th scope="col">Invoice Ref</th>
                   <th scope="col">Supplier Ref</th>
-                  <th scope="col">Result</th>
-                  <th scope="col">Detail</th>
+                  <th scope="col">Ingestion Result</th>
+                  <th scope="col">Validation Audit Detail</th>
                 </tr>
               </thead>
               <tbody>
@@ -225,7 +299,7 @@ export default function ImportPage() {
                   >
                     <td>{row.row_index + 1}</td>
                     <td>
-                      <code>{row.invoice_reference}</code>
+                      <code style={{ fontWeight: 700, color: '#003087' }}>{row.invoice_reference}</code>
                     </td>
                     <td>{row.supplier_reference}</td>
                     <td>
@@ -234,7 +308,7 @@ export default function ImportPage() {
                     <td className="col-notes">
                       {row.status === 'ACCEPTED' && row.obligation_id ? (
                         <span className="notes-text" title={row.obligation_id}>
-                          ID: {row.obligation_id.slice(0, 8)}…
+                          Assigned UUID: {row.obligation_id.slice(0, 8)}…
                         </span>
                       ) : (
                         <span className="notes-text">{row.reason ?? '—'}</span>
@@ -247,17 +321,16 @@ export default function ImportPage() {
           </div>
 
           {importResult.accepted > 0 && (
-            <div className="alert alert-info" role="status">
-              ✓ {importResult.accepted} obligation{importResult.accepted !== 1 ? 's' : ''} imported as DRAFT.
-              Go to <strong>Obligations</strong> to validate them before batching.
+            <div className="alert alert-success" style={{ marginTop: 16 }}>
+              ✓ {importResult.accepted} obligation{importResult.accepted !== 1 ? 's' : ''} ingested as DRAFT.
+              Navigate to <strong>Obligations</strong> or <strong>Batches</strong> to bundle and route them for PayPal Sandbox payment.
             </div>
           )}
         </div>
       )}
 
-      <p className="disclaimer">
-        ⓘ Import is for SYNTHETIC demo data only. No real financial records.
-        Invalid and duplicate rows are shown here and never stored.
+      <p className="disclaimer" style={{ marginTop: 20 }}>
+        ⓘ All imported data is treated as SYNTHETIC. No actual bank transfers or real money movement occurs.
       </p>
     </div>
   )

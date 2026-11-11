@@ -1,0 +1,214 @@
+{
+  "info": {
+    "name": "PUFI - Enterprise Payment Coordination API",
+    "_postman_id": "pufi-api-v1-collection",
+    "description": "Comprehensive Postman API collection for the PUFI (Payment Unified Financial Infrastructure) platform. Includes health checks, obligation management, batch creation, AI route analysis, maker-checker approvals, PayPal Sandbox submission, and audit trails.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "batchId",
+      "value": "4530b907-8887-40ca-b3b3-2ac841d16f56",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "System Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["health"]
+        },
+        "description": "Checks the operational status of the PUFI backend API and database connection."
+      }
+    },
+    {
+      "name": "Obligations",
+      "item": [
+        {
+          "name": "List Obligations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/obligations/?limit=25&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "obligations", ""],
+              "query": [
+                { "key": "limit", "value": "25" },
+                { "key": "offset", "value": "0" },
+                { "key": "status", "value": "VALIDATED", "disabled": true }
+              ]
+            },
+            "description": "Returns paginated list of supplier obligations with status and amount."
+          }
+        },
+        {
+          "name": "Import Obligations (JSON)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"supplier_name\": \"Apex Logistics Ltd\",\n    \"supplier_country\": \"GB\",\n    \"currency\": \"USD\",\n    \"amount\": \"450.00\",\n    \"invoice_reference\": \"INV-APEX-2026-09\",\n    \"due_date\": \"2026-12-15\",\n    \"recipient_reference\": \"finance@apexlogistics.example.com\",\n    \"recipient_type\": \"EMAIL\"\n  }\n]"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/obligations/import",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "obligations", "import"]
+            },
+            "description": "Batch import obligations with schema validation and duplicate detection."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Batches",
+      "item": [
+        {
+          "name": "List Batches",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches/?limit=20&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches", ""],
+              "query": [
+                { "key": "limit", "value": "20" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "Lists all payment batches with their lifecycle states."
+          }
+        },
+        {
+          "name": "Get Batch Detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches/{{batchId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches", "{{batchId}}"]
+            },
+            "description": "Retrieves batch metadata, currency, total amount, and obligations."
+          }
+        },
+        {
+          "name": "Create Batch",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"batch_reference\": \"BATCH-POSTMAN-TEST-01\",\n  \"currency\": \"USD\",\n  \"obligation_ids\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches/",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches", ""]
+            },
+            "description": "Groups validated obligations into an atomic payment batch."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analysis & AI Routing",
+      "item": [
+        {
+          "name": "Analyze Batch Routes",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches/{{batchId}}/analyze?strategy=LOWEST_COST",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches", "{{batchId}}", "analyze"],
+              "query": [
+                { "key": "strategy", "value": "LOWEST_COST" }
+              ]
+            },
+            "description": "Executes deterministic multi-provider route comparison and generates AI Advisory using Google Gemini."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Approvals & Execution",
+      "item": [
+        {
+          "name": "Approve Batch (Maker-Checker)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approver_id\": \"POSTMAN-CHECKER-001\",\n  \"notes\": \"Approved via Postman API Collection\",\n  \"selected_provider\": \"PAYPAL_PAYOUTS\",\n  \"routing_strategy\": \"LOWEST_COST\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches/{{batchId}}/approve",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches", "{{batchId}}", "approve"]
+            },
+            "description": "Authorizes a batch for submission. Requires prerequisite analysis."
+          }
+        },
+        {
+          "name": "Submit Batch to PayPal Sandbox",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches/{{batchId}}/submit",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches", "{{batchId}}", "submit"]
+            },
+            "description": "Transmits payment batch to PayPal Sandbox Payouts API. Enforces idempotency."
+          }
+        },
+        {
+          "name": "Refresh Batch Status",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches/{{batchId}}/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches", "{{batchId}}", "refresh"]
+            },
+            "description": "Polls PayPal Payouts API for updated item settlement statuses."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Audit & Compliance",
+      "item": [
+        {
+          "name": "Get Batch Audit Trail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/batches/{{batchId}}/audit",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "batches", "{{batchId}}", "audit"]
+            },
+            "description": "Retrieves the immutable audit trail of all state transitions, approvals, and provider calls."
+          }
+        }
+      ]
+    }
+  ]
+}

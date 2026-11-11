@@ -1,0 +1,44 @@
+# Render Blueprint for PUFI (Enterprise Payment Coordination Infrastructure)
+# Deploy with one click on Render: https://render.com
+
+services:
+  # Backend API Service (FastAPI)
+  - type: web
+    name: pufi-backend
+    runtime: python
+    region: oregon
+    plan: starter
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: ENVIRONMENT
+        value: sandbox
+      - key: DATABASE_URL
+        value: sqlite:///./pufi_dev.db
+      - key: PAYPAL_MODE
+        value: sandbox
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.8-flash
+
+  # Frontend Static Site (React + Vite + AG Grid)
+  - type: static
+    name: pufi-frontend
+    region: oregon
+    plan: starter
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: "frontend/dist"
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://pufi-backend.onrender.com
