@@ -28,6 +28,7 @@ import {
   Sparkles,
   Lock,
   Send,
+  AlertTriangle,
 } from 'lucide-react'
 
 interface BatchDetailPageProps {
@@ -35,8 +36,8 @@ interface BatchDetailPageProps {
   onBack: () => void
 }
 
-function formatAmount(amount: string | null | undefined, currency: string = 'USD'): string {
-  if (amount == null) return '—'
+function formatAmount(amount: string | null | undefined, currency: string): string {
+  if (!amount) return `0.00 ${currency || 'USD'}`
   const num = parseFloat(amount)
   if (isNaN(num)) return `${amount} ${currency}`
   try {
@@ -50,8 +51,27 @@ function formatAmount(amount: string | null | undefined, currency: string = 'USD
   }
 }
 
+function formatErrorMessage(err: unknown): string {
+  if (!err) return 'Unknown error'
+  if (typeof err === 'string') return err
+  const obj = err as Record<string, any>
+  if (obj.detail) {
+    if (typeof obj.detail === 'string') return obj.detail
+    if (typeof obj.detail === 'object') {
+      if (obj.detail.message) return String(obj.detail.message)
+      if (obj.detail.error) return String(obj.detail.error)
+      if (Array.isArray(obj.detail)) {
+        return obj.detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+      }
+    }
+  }
+  if (obj.error?.message) return String(obj.error.message)
+  if (obj.message) return String(obj.message)
+  return JSON.stringify(err)
+}
+
 // ---------------------------------------------------------------------------
-// 1. Bryntum-inspired Lifecycle Stepper
+// Bryntum Lifecycle Stepper
 // ---------------------------------------------------------------------------
 
 function LifecycleStepper({ status, hasAnalysis }: { status: string; hasAnalysis: boolean }) {
@@ -68,7 +88,7 @@ function LifecycleStepper({ status, hasAnalysis }: { status: string; hasAnalysis
   else if (status === 'ANALYZED') currentIndex = 1
   else if (status === 'APPROVED') currentIndex = 2
   else if (['SUBMITTED', 'PROCESSING'].includes(status)) currentIndex = 3
-  else if (['COMPLETED', 'PARTIALLY_COMPLETED'].includes(status)) currentIndex = 4
+  else if (['COMPLETED', 'PARTIALLY_COMPLETED', 'FAILED'].includes(status)) currentIndex = 4
 
   const progressPct = (currentIndex / (steps.length - 1)) * 100
 
@@ -78,25 +98,26 @@ function LifecycleStepper({ status, hasAnalysis }: { status: string; hasAnalysis
         background: 'var(--bg-surface)',
         border: '1px solid var(--border-base)',
         borderRadius: 'var(--radius-lg)',
-        padding: '24px 28px',
+        padding: '24px 32px',
         boxShadow: 'var(--shadow-card)',
-        position: 'relative',
       }}
     >
-      <div style={{ position: 'relative', margin: '14px 10px' }}>
-        {/* Track Line */}
+      <div style={{ position: 'relative', width: '100%' }}>
+        {/* Track Line Background */}
         <div
           style={{
             position: 'absolute',
             top: 15,
             left: 0,
-            right: 0,
+            width: '100%',
             height: 3,
-            background: 'var(--bg-subtle)',
+            background: 'var(--border-base)',
             borderRadius: 2,
+            zIndex: 1,
           }}
         />
-        {/* Progress Line */}
+
+        {/* Track Line Active Progress */}
         <div
           style={{
             position: 'absolute',
@@ -107,6 +128,7 @@ function LifecycleStepper({ status, hasAnalysis }: { status: string; hasAnalysis
             background: 'var(--pufi-primary)',
             borderRadius: 2,
             transition: 'width 0.4s var(--ease-spring)',
+            zIndex: 1,
           }}
         />
 
@@ -188,21 +210,31 @@ export default function BatchDetailPage({ batchId, onBack }: BatchDetailPageProp
   const queryClient = useQueryClient()
   const [strategy, setStrategy] = useState<'LOWEST_COST' | 'FASTEST' | 'BALANCED'>('LOWEST_COST')
   const [approverId, setApproverId] = useState('USR-FIN-CONTROLLER')
+  const [analysisResult, setAnalysisResult] = useState<BatchAnalysis | null>(null)
 
   // 1. Fetch Batch
   const { data: batch, isLoading: isBatchLoading, isError: isBatchError, error: batchError } = useQuery({
     queryKey: ['batch', batchId],
     queryFn: () => fetchBatch(batchId),
+    refetchInterval: 15000,
   })
 
-  // 2. Fetch Instructions
+  // 2. Fetch Initial/Stored Analysis if batch was already evaluated
+  const { data: storedAnalysis } = useQuery({
+    queryKey: ['batchAnalysis', batchId, strategy],
+    queryFn: () => fetchBatchAnalysis(batchId, strategy),
+    enabled: ['ANALYZED', 'APPROVED', 'SUBMITTED', 'PROCESSING', 'COMPLETED', 'PARTIALLY_COMPLETED', 'FAILED'].includes(batch?.status || ''),
+    staleTime: 60000,
+  })
+
+  // 3. Fetch Instructions
   const { data: instructions } = useQuery({
     queryKey: ['instructions', batchId],
     queryFn: () => fetchInstructions(batchId),
     enabled: !!batch,
   })
 
-  // 3. Fetch Audit Events
+  // 4. Fetch Audit Events
   const { data: auditEvents } = useQuery({
     queryKey: ['audit', batchId],
     queryFn: () => fetchAuditEvents(batchId),
@@ -210,14 +242,18 @@ export default function BatchDetailPage({ batchId, onBack }: BatchDetailPageProp
   })
 
   // Analysis Mutation
-  const [analysisResult, setAnalysisResult] = useState<BatchAnalysis | null>(null)
   const analyzeMutation = useMutation({
     mutationFn: () => fetchBatchAnalysis(batchId, strategy),
     onSuccess: (data) => {
       setAnalysisResult(data)
       queryClient.invalidateQueries({ queryKey: ['batch', batchId] })
+      queryClient.invalidateQueries({ queryKey: ['batchAnalysis', batchId] })
+      queryClient.invalidateQueries({ queryKey: ['audit', batchId] })
     },
   })
+
+  // Active Analysis: Local Mutation Result or Stored Query Result
+  const activeAnalysis = analysisResult || storedAnalysis
 
   // Approve Mutation
   const approveMutation = useMutation({
@@ -271,7 +307,19 @@ export default function BatchDetailPage({ batchId, onBack }: BatchDetailPageProp
   if (isBatchError || !batch) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--pufi-primary)', cursor: 'pointer', fontWeight: 650 }}>
+        <button
+          onClick={onBack}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            background: 'none',
+            border: 'none',
+            color: 'var(--pufi-primary)',
+            cursor: 'pointer',
+            fontWeight: 650,
+          }}
+        >
           <ArrowLeft size={16} /> Back to Batches
         </button>
         <ErrorState
@@ -283,7 +331,7 @@ export default function BatchDetailPage({ batchId, onBack }: BatchDetailPageProp
     )
   }
 
-  const isApproved = batch.status === 'APPROVED' || ['SUBMITTED', 'PROCESSING', 'COMPLETED'].includes(batch.status)
+  const isApproved = batch.status === 'APPROVED' || ['SUBMITTED', 'PROCESSING', 'COMPLETED', 'PARTIALLY_COMPLETED', 'FAILED'].includes(batch.status)
   const isSubmitted = ['SUBMITTED', 'PROCESSING', 'COMPLETED', 'PARTIALLY_COMPLETED'].includes(batch.status)
 
   return (
@@ -344,7 +392,7 @@ export default function BatchDetailPage({ batchId, onBack }: BatchDetailPageProp
       </div>
 
       {/* Bryntum Lifecycle Stepper */}
-      <LifecycleStepper status={batch.status} hasAnalysis={!!analysisResult} />
+      <LifecycleStepper status={batch.status} hasAnalysis={!!activeAnalysis} />
 
       {/* Main Execution Panels Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: 24 }}>
@@ -402,9 +450,9 @@ export default function BatchDetailPage({ batchId, onBack }: BatchDetailPageProp
             </div>
 
             {/* Analysis Result Display */}
-            {analysisResult ? (
+            {activeAnalysis ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {analysisResult.ai_recommendation && (
+                {activeAnalysis.ai_recommendation && (
                   <div
                     style={{
                       background: 'var(--bg-subtle)',
@@ -416,21 +464,21 @@ export default function BatchDetailPage({ batchId, onBack }: BatchDetailPageProp
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                       <Sparkles size={15} color="var(--pufi-primary)" />
                       <strong style={{ fontSize: '0.84rem', color: 'var(--pufi-primary)' }}>
-                        AI Advisory Pick: {analysisResult.ai_recommendation.recommended_route || 'PAYPAL'}
+                        AI Advisory Pick: {activeAnalysis.ai_recommendation.recommended_route || 'PAYPAL'}
                       </strong>
                     </div>
                     <p style={{ margin: '0 0 6px 0', fontSize: '0.8rem', color: 'var(--text-primary)' }}>
-                      {analysisResult.ai_recommendation.summary}
+                      {activeAnalysis.ai_recommendation.summary}
                     </p>
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      Model: {analysisResult.ai_recommendation.model_name} • Advisory only (requires human approval)
+                      Model: {activeAnalysis.ai_recommendation.model_name} • Advisory only (requires human approval)
                     </div>
                   </div>
                 )}
 
                 {/* Provider List */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {analysisResult.provider_routes.map((route: ProviderRoute) => (
+                  {activeAnalysis.provider_routes.map((route: ProviderRoute) => (
                     <div
                       key={route.provider_code}
                       style={{
@@ -448,16 +496,30 @@ export default function BatchDetailPage({ batchId, onBack }: BatchDetailPageProp
                           <strong style={{ fontSize: '0.86rem', color: 'var(--text-primary)' }}>
                             {route.display_name}
                           </strong>
-                          <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: route.is_simulated ? 'var(--pufi-warning-bg)' : 'var(--pufi-info-bg)', color: route.is_simulated ? 'var(--pufi-warning-text)' : 'var(--pufi-info-text)' }}>
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              padding: '1px 6px',
+                              borderRadius: 4,
+                              background: route.is_simulated ? 'var(--pufi-warning-bg)' : 'var(--pufi-info-bg)',
+                              color: route.is_simulated ? 'var(--pufi-warning-text)' : 'var(--pufi-info-text)',
+                            }}
+                          >
                             {route.environment}
                           </span>
                         </div>
                         <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                          {route.eligible ? `Est. Fee: ${formatAmount(route.provider_fee, 'USD')} • ~${route.estimated_processing_hours}h` : route.exclusion_reasons.join(', ')}
+                          {route.eligible
+                            ? `Est. Fee: ${formatAmount(route.provider_fee, 'USD')} • ~${route.estimated_processing_hours}h`
+                            : route.exclusion_reasons.join(', ')}
                         </div>
                       </div>
 
-                      <strong className="num-tabular" style={{ fontSize: '0.9rem', color: route.eligible ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                      <strong
+                        className="num-tabular"
+                        style={{ fontSize: '0.9rem', color: route.eligible ? 'var(--text-primary)' : 'var(--text-muted)' }}
+                      >
                         {route.eligible ? formatAmount(route.total_estimated_cost, 'USD') : 'Excluded'}
                       </strong>
                     </div>
@@ -467,6 +529,23 @@ export default function BatchDetailPage({ batchId, onBack }: BatchDetailPageProp
             ) : (
               <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
                 Run route evaluation to preview multi-provider fee breakdowns and AI advisory.
+              </div>
+            )}
+
+            {/* Error Message if Analysis Failed */}
+            {analyzeMutation.isError && (
+              <div
+                style={{
+                  marginTop: 14,
+                  padding: '12px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--pufi-danger-bg)',
+                  border: '1px solid var(--pufi-danger-border)',
+                  color: 'var(--pufi-danger-text)',
+                  fontSize: '0.8rem',
+                }}
+              >
+                <strong>Route Analysis Failed:</strong> {formatErrorMessage(analyzeMutation.error)}
               </div>
             )}
           </div>
@@ -548,7 +627,7 @@ export default function BatchDetailPage({ batchId, onBack }: BatchDetailPageProp
               </div>
             </div>
 
-            {/* Approver ID Input */}
+            {/* Approver ID Input (if not yet approved) */}
             {!isApproved && (
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, marginBottom: 4, color: 'var(--text-primary)' }}>
@@ -570,6 +649,111 @@ export default function BatchDetailPage({ batchId, onBack }: BatchDetailPageProp
                     boxSizing: 'border-box',
                   }}
                 />
+              </div>
+            )}
+
+            {/* Approval Error Display */}
+            {approveMutation.isError && (
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: '12px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--pufi-danger-bg)',
+                  border: '1px solid var(--pufi-danger-border)',
+                  color: 'var(--pufi-danger-text)',
+                  fontSize: '0.8rem',
+                }}
+              >
+                <strong>Approval Failed:</strong> {formatErrorMessage(approveMutation.error)}
+              </div>
+            )}
+
+            {/* Submit Error Diagnostic Banner */}
+            {submitMutation.isError && (
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: '14px 16px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--pufi-danger-bg)',
+                  border: '1px solid var(--pufi-danger-border)',
+                  color: 'var(--pufi-danger-text)',
+                  fontSize: '0.82rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontWeight: 750 }}>
+                  <AlertTriangle size={16} />
+                  <span>
+                    {formatErrorMessage(submitMutation.error).includes('country') ||
+                    formatErrorMessage(submitMutation.error).includes('PAYOUT_NOT_AVAILABLE')
+                      ? 'BLOCKED — PAYPAL COUNTRY ELIGIBILITY'
+                      : 'PayPal Submission Failed'}
+                  </span>
+                </div>
+                <div style={{ wordBreak: 'break-word', marginBottom: 6, lineHeight: 1.4 }}>
+                  {formatErrorMessage(submitMutation.error)}
+                </div>
+                {formatErrorMessage(submitMutation.error).includes('PAYOUT_NOT_AVAILABLE') && (
+                  <div
+                    style={{
+                      fontSize: '0.76rem',
+                      color: 'var(--text-secondary)',
+                      marginTop: 8,
+                      padding: '8px 10px',
+                      background: 'rgba(255, 255, 255, 0.75)',
+                      borderRadius: 6,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    ℹ <strong>Why did this happen?</strong> PayPal Sandbox enforces sender country eligibility. Indian PayPal accounts currently support receive/withdraw only. Retrying will not bypass country regulations; the audit trail records this provider outcome.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Submit Success Outcome Banner */}
+            {submitMutation.data && (
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: '14px 16px',
+                  borderRadius: 'var(--radius-md)',
+                  background: submitMutation.data.success ? 'var(--pufi-success-bg)' : 'var(--pufi-warning-bg)',
+                  border: `1px solid ${submitMutation.data.success ? 'var(--pufi-success-border)' : 'var(--pufi-warning-border)'}`,
+                  color: submitMutation.data.success ? 'var(--pufi-success-text)' : 'var(--pufi-warning-text)',
+                  fontSize: '0.82rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, fontWeight: 750 }}>
+                  <CheckCircle2 size={16} />
+                  <span>{submitMutation.data.success ? 'Batch Submitted Successfully' : 'Submission Completed with Warnings'}</span>
+                </div>
+                {submitMutation.data.paypal_payout_batch_id && (
+                  <div style={{ marginTop: 4 }}>
+                    PayPal Payout Batch ID: <code>{submitMutation.data.paypal_payout_batch_id}</code>
+                  </div>
+                )}
+                <div style={{ fontSize: '0.74rem', marginTop: 6, opacity: 0.9 }}>
+                  {submitMutation.data.disclaimer}
+                </div>
+              </div>
+            )}
+
+            {/* Refresh Mutation Error/Data Display */}
+            {refreshMutation.isError && (
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: '12px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--pufi-danger-bg)',
+                  border: '1px solid var(--pufi-danger-border)',
+                  color: 'var(--pufi-danger-text)',
+                  fontSize: '0.8rem',
+                }}
+              >
+                <strong>Status Refresh Failed:</strong> {formatErrorMessage(refreshMutation.error)}
               </div>
             )}
           </div>
@@ -620,7 +804,7 @@ export default function BatchDetailPage({ batchId, onBack }: BatchDetailPageProp
                   color: 'var(--pp-navy)',
                   fontSize: '0.92rem',
                   fontWeight: 800,
-                  cursor: 'pointer',
+                  cursor: submitMutation.isPending ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -748,53 +932,79 @@ export default function BatchDetailPage({ batchId, onBack }: BatchDetailPageProp
         )}
       </div>
 
-      {/* Embedded Audit Events */}
-      {auditEvents && auditEvents.length > 0 && (
-        <div
-          style={{
-            background: 'var(--bg-surface)',
-            border: '1px solid var(--border-base)',
-            borderRadius: 'var(--radius-lg)',
-            padding: 24,
-            boxShadow: 'var(--shadow-card)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-            <Clock size={16} color="var(--pufi-primary)" />
+      {/* Audit Trail Timeline */}
+      <div
+        style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--border-base)',
+          borderRadius: 'var(--radius-lg)',
+          padding: 24,
+          boxShadow: 'var(--shadow-card)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div>
             <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 750, color: 'var(--text-primary)' }}>
-              Batch Audit Trail Log
+              Batch Audit Trail & State Transitions
             </h3>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              Immutable transition logs with actor attribution and correlation IDs
+            </p>
           </div>
+          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            {auditEvents?.length || 0} events recorded
+          </span>
+        </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {auditEvents && auditEvents.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {auditEvents.map((ev: AuditEventOut) => (
               <div
                 key={ev.id}
                 style={{
+                  padding: '12px 16px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--bg-subtle)',
+                  border: '1px solid var(--border-subtle)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '10px 14px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--bg-subtle)',
-                  border: '1px solid var(--border-subtle)',
-                  fontSize: '0.8rem',
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <StatusBadge status={ev.event_type} size="sm" />
-                  <span style={{ color: 'var(--text-secondary)' }}>
-                    Actor: <strong>{ev.actor}</strong>
-                  </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: 'var(--pufi-primary)',
+                    }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 750, fontSize: '0.84rem', color: 'var(--text-primary)' }}>
+                      {ev.event_type}
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                      Actor: <strong>{ev.actor}</strong> • {new Date(ev.created_at).toLocaleString()}
+                    </div>
+                  </div>
                 </div>
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>
-                  {new Date(ev.created_at).toLocaleString()}
-                </span>
+
+                <div style={{ textAlign: 'right' }}>
+                  <code style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    {ev.correlation_id ? `CID: ${ev.correlation_id.slice(0, 8)}...` : ev.id.slice(0, 8)}
+                  </code>
+                </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+            <Clock size={24} style={{ margin: '0 auto 8px auto', opacity: 0.5 }} />
+            <div>No audit transitions recorded yet for this batch.</div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
