@@ -178,6 +178,15 @@ export const createBatch = (req: BatchCreateRequest): Promise<Batch> =>
     body: JSON.stringify(req),
   })
 
+/** List all payment batches. */
+export const fetchBatches = (params?: { limit?: number; offset?: number }): Promise<Batch[]> => {
+  const qs = new URLSearchParams()
+  if (params?.limit != null) qs.set('limit', String(params.limit))
+  if (params?.offset != null) qs.set('offset', String(params.offset))
+  const query = qs.toString() ? `?${qs.toString()}` : ''
+  return apiFetch<Batch[]>(`/batches${query}`)
+}
+
 /** Get batch detail by ID. */
 export const fetchBatch = (id: string): Promise<Batch> =>
   apiFetch<Batch>(`/batches/${id}`)

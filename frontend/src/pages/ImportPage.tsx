@@ -170,17 +170,16 @@ export default function ImportPage() {
             Ingest supplier obligations via JSON batch, Zapier Webhooks, or Channel3 ERP connectors.
           </p>
         </div>
-        <div className="page-actions">
+        <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
             className="btn btn-secondary"
             onClick={() => setShowZapierGuide(!showZapierGuide)}
-            style={{ fontSize: '0.8rem' }}
           >
-            <Zap size={14} color="#FF6C37" />
-            {showZapierGuide ? 'Hide Zapier Guide' : 'Zapier Webhook Config'}
+            <Zap size={15} color="#FF6C37" />
+            <span>{showZapierGuide ? 'Hide Zapier Guide' : 'Zapier Webhook Config'}</span>
           </button>
           <button className="btn btn-secondary" onClick={handleLoadExample}>
-            Load Sample Payload
+            <span>Load Sample Payload</span>
           </button>
         </div>
       </div>

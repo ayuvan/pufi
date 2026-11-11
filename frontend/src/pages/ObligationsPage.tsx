@@ -3,7 +3,7 @@ import { fetchObligations, fetchHealth, type Obligation, type ObligationStatus }
 import { useState, useMemo } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import type { ColDef } from 'ag-grid-community'
-import { Search, Grid, Table as TableIcon, Sparkles } from 'lucide-react'
+import { Search, Grid, Table as TableIcon, Sparkles, Filter, CheckCircle2, AlertCircle, FileText } from 'lucide-react'
 
 // -------------------------------------------------------------------------
 // Status badge helpers
@@ -71,10 +71,10 @@ function ConnectionStatus() {
     <div className="connection-bar ok">
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#007934' }} />
-        <span><strong>PUFI API v{data?.version} Connected</strong> • Environment: PayPal Sandbox</span>
+        <span><strong>PUFI API v{data?.version} Active</strong> • PayPal Sandbox Mode • Deterministic Decimal Ledger</span>
       </div>
-      <div style={{ fontSize: '0.76rem', color: '#166534' }}>
-        Database: SQLite / PostgreSQL Target • AI Advisor: Active
+      <div style={{ fontSize: '0.78rem', color: '#166534', fontWeight: 600 }}>
+        PostgreSQL / SQLite Storage Engine
       </div>
     </div>
   )
@@ -108,15 +108,25 @@ export default function ObligationsPage() {
   const totalPages = Math.ceil(total / PAGE_SIZE)
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1
 
-  // AG Grid Column Definitions
+  // Summary counts for quick chips
+  const validatedCount = useMemo(
+    () => obligations.filter((o) => o.status === 'VALIDATED').length,
+    [obligations]
+  )
+  const draftCount = useMemo(
+    () => obligations.filter((o) => o.status === 'DRAFT').length,
+    [obligations]
+  )
+
+  // AG Grid Column Definitions with generous spacing
   const columnDefs = useMemo<ColDef<Obligation>[]>(() => [
     {
       field: 'invoice_reference',
       headerName: 'Invoice Ref',
       pinned: 'left',
-      width: 170,
+      width: 180,
       cellRenderer: (params: { value?: string }) => (
-        <code style={{ fontFamily: 'monospace', fontWeight: 700, color: '#003087' }}>
+        <code style={{ fontFamily: 'monospace', fontWeight: 800, color: '#003087', fontSize: '0.85rem' }}>
           {params.value}
         </code>
       ),
@@ -124,24 +134,31 @@ export default function ObligationsPage() {
     {
       headerName: 'Supplier Name',
       valueGetter: (params) => params.data?.supplier.display_name,
-      minWidth: 200,
-      flex: 1,
+      minWidth: 240,
+      flex: 1.2,
+      cellRenderer: (params: { value?: string }) => (
+        <span style={{ fontWeight: 600, color: '#0F172A' }}>
+          {params.value}
+        </span>
+      ),
     },
     {
       headerName: 'Country',
       width: 110,
       valueGetter: (params) => params.data?.supplier.country_code,
       cellRenderer: (params: { value?: string }) => (
-        <span className="country-badge">{params.value}</span>
+        <span className="country-badge" style={{ padding: '3px 8px', fontSize: '0.75rem' }}>
+          {params.value}
+        </span>
       ),
     },
     {
       field: 'amount',
       headerName: 'Obligation Amount',
-      width: 160,
+      width: 170,
       type: 'rightAligned',
       cellRenderer: (params: { data?: Obligation }) => (
-        <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: '#0F172A', fontSize: '0.92rem' }}>
           {params.data ? formatAmount(params.data.amount, params.data.currency) : ''}
         </span>
       ),
@@ -151,7 +168,7 @@ export default function ObligationsPage() {
       headerName: 'Currency',
       width: 110,
       cellRenderer: (params: { value?: string }) => (
-        <span className={params.value === 'ZZZ' ? 'currency-invalid' : 'currency-code'}>
+        <span className={params.value === 'ZZZ' ? 'currency-invalid' : 'currency-code'} style={{ fontSize: '0.85rem' }}>
           {params.value} {params.value === 'ZZZ' && '⚠'}
         </span>
       ),
@@ -160,6 +177,9 @@ export default function ObligationsPage() {
       field: 'due_at',
       headerName: 'Due Date',
       width: 130,
+      cellRenderer: (params: { value?: string }) => (
+        <span style={{ color: '#475569', fontSize: '0.84rem' }}>{params.value}</span>
+      ),
     },
     {
       field: 'status',
@@ -172,10 +192,10 @@ export default function ObligationsPage() {
     {
       field: 'notes',
       headerName: 'Audit / Validation Notes',
-      minWidth: 220,
-      flex: 1,
+      minWidth: 260,
+      flex: 1.5,
       cellRenderer: (params: { value?: string }) => (
-        <span style={{ fontSize: '0.8rem', color: '#64748B' }}>
+        <span style={{ fontSize: '0.82rem', color: '#64748B' }}>
           {params.value || '—'}
         </span>
       ),
@@ -186,87 +206,47 @@ export default function ObligationsPage() {
     <div className="page">
       <ConnectionStatus />
 
-      {/* Header */}
-      <div className="page-header">
+      {/* Spacious Header with Metrics */}
+      <div className="page-header" style={{ marginBottom: 20 }}>
         <div>
-          <h1 className="page-title" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span>Payment Obligations</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <h1 className="page-title" style={{ margin: 0 }}>Payment Obligations</h1>
             <span
               style={{
                 fontSize: '0.72rem',
-                padding: '3px 10px',
+                padding: '4px 12px',
                 borderRadius: 999,
-                background: '#F1F5F9',
+                background: '#EBF4FE',
                 color: '#003087',
-                border: '1px solid #CBD5E1',
+                border: '1px solid #BFDBFE',
                 fontWeight: 700,
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 4,
+                gap: 5,
               }}
             >
-              <Sparkles size={12} color="#0070BA" />
-              AG Grid Explorer
+              <Sparkles size={13} color="#0070BA" />
+              Powered by AG Grid
             </span>
-          </h1>
-          <p className="page-subtitle">
-            Enterprise Financial Registry • {total} synthetic obligation{total !== 1 ? 's' : ''} loaded
+          </div>
+          <p className="page-subtitle" style={{ marginTop: 6 }}>
+            Enterprise Financial Registry • Multi-currency obligations with automated validation and duplicate prevention
           </p>
         </div>
 
-        <div className="page-actions">
-          {/* View Toggle */}
-          <div style={{ display: 'inline-flex', background: '#E2E8F0', padding: 2, borderRadius: 8 }}>
-            <button
-              className="btn"
-              style={{
-                padding: '5px 12px',
-                fontSize: '0.78rem',
-                borderRadius: 6,
-                background: useAgGrid ? '#FFFFFF' : 'transparent',
-                color: useAgGrid ? '#003087' : '#64748B',
-                boxShadow: useAgGrid ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-              }}
-              onClick={() => setUseAgGrid(true)}
-            >
-              <Grid size={14} />
-              AG Grid
-            </button>
-            <button
-              className="btn"
-              style={{
-                padding: '5px 12px',
-                fontSize: '0.78rem',
-                borderRadius: 6,
-                background: !useAgGrid ? '#FFFFFF' : 'transparent',
-                color: !useAgGrid ? '#003087' : '#64748B',
-                boxShadow: !useAgGrid ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-              }}
-              onClick={() => setUseAgGrid(false)}
-            >
-              <TableIcon size={14} />
-              Standard
-            </button>
+        {/* Quick Summary Badges */}
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#FFFFFF', padding: '6px 14px', borderRadius: 20, border: '1px solid #E2E8F0', fontSize: '0.8rem', fontWeight: 600 }}>
+            <FileText size={14} color="#0070BA" />
+            <span>Total: <strong>{total}</strong></span>
           </div>
-
-          {/* Status Filter */}
-          <select
-            className="select"
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value as ObligationStatus | '')
-              setOffset(0)
-            }}
-            aria-label="Filter by status"
-          >
-            <option value="">All statuses</option>
-            <option value="DRAFT">Draft</option>
-            <option value="VALIDATED">Validated</option>
-            <option value="ON_HOLD">On Hold</option>
-            <option value="READY">Ready</option>
-            <option value="CLOSED">Closed</option>
-            <option value="CANCELLED">Cancelled</option>
-          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#ECFDF5', padding: '6px 14px', borderRadius: 20, border: '1px solid #A7F3D0', fontSize: '0.8rem', fontWeight: 600, color: '#065F46' }}>
+            <CheckCircle2 size={14} color="#059669" />
+            <span>Validated: <strong>{validatedCount}</strong></span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#F1F5F9', padding: '6px 14px', borderRadius: 20, border: '1px solid #CBD5E1', fontSize: '0.8rem', fontWeight: 600, color: '#475569' }}>
+            <span>Draft: <strong>{draftCount}</strong></span>
+          </div>
         </div>
       </div>
 
@@ -277,39 +257,126 @@ export default function ObligationsPage() {
         </div>
       )}
 
-      {isLoading ? (
-        <div className="loading-state" aria-live="polite">Loading obligations…</div>
-      ) : obligations.length === 0 ? (
-        <div className="empty-state">
-          <p>No obligations found.</p>
-          <p className="empty-hint">Run <code>python seed.py</code> in the backend to load synthetic data.</p>
-        </div>
-      ) : (
-        <>
-          {/* AG Grid View */}
-          {useAgGrid ? (
-            <div>
-              <div className="grid-toolbar">
-                <div className="grid-search-box">
-                  <Search size={16} className="grid-search-icon" />
-                  <input
-                    type="text"
-                    className="grid-search-input"
-                    placeholder="Quick search across suppliers, invoices, notes..."
-                    value={quickFilterText}
-                    onChange={(e) => setQuickFilterText(e.target.value)}
-                  />
-                </div>
-                <div className="grid-meta-tag">
-                  <span>Displaying <strong>{obligations.length}</strong> items in AG Grid</span>
-                  <span>•</span>
-                  <span>Click column headers to sort</span>
-                </div>
-              </div>
+      {/* Main Card Container */}
+      <div className="card" style={{ padding: 24 }}>
+        {/* Single Harmonious Action Bar */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 16,
+            marginBottom: 20,
+            flexWrap: 'wrap',
+          }}
+        >
+          {/* Search Box */}
+          <div style={{ position: 'relative', flex: 1, minWidth: 280, maxWidth: 480 }}>
+            <Search size={16} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+            <input
+              type="text"
+              className="grid-search-input"
+              style={{
+                width: '100%',
+                padding: '10px 16px 10px 40px',
+                fontSize: '0.88rem',
+                border: '1px solid #E2E8F0',
+                borderRadius: 999,
+                background: '#FFFFFF',
+                boxSizing: 'border-box',
+              }}
+              placeholder="Search by supplier, invoice ref, notes..."
+              value={quickFilterText}
+              onChange={(e) => setQuickFilterText(e.target.value)}
+            />
+          </div>
 
+          {/* Right Controls Group: Status filter + View toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            {/* Status Filter Dropdown */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Filter size={15} color="#64748B" />
+              <select
+                className="select"
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value as ObligationStatus | '')
+                  setOffset(0)
+                }}
+                aria-label="Filter by status"
+                style={{ width: 170 }}
+              >
+                <option value="">All Statuses</option>
+                <option value="DRAFT">Draft</option>
+                <option value="VALIDATED">Validated</option>
+                <option value="ON_HOLD">On Hold</option>
+                <option value="READY">Ready</option>
+                <option value="CLOSED">Closed</option>
+                <option value="CANCELLED">Cancelled</option>
+              </select>
+            </div>
+
+            {/* View Switcher Pills */}
+            <div style={{ display: 'inline-flex', background: '#F1F5F9', padding: 3, borderRadius: 999, border: '1px solid #E2E8F0' }}>
+              <button
+                className="btn"
+                style={{
+                  height: 34,
+                  padding: '0 14px',
+                  fontSize: '0.78rem',
+                  borderRadius: 999,
+                  background: useAgGrid ? '#FFFFFF' : 'transparent',
+                  color: useAgGrid ? '#003087' : '#64748B',
+                  fontWeight: useAgGrid ? 700 : 500,
+                  boxShadow: useAgGrid ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  border: 'none',
+                }}
+                onClick={() => setUseAgGrid(true)}
+              >
+                <Grid size={14} />
+                <span>AG Grid View</span>
+              </button>
+              <button
+                className="btn"
+                style={{
+                  height: 34,
+                  padding: '0 14px',
+                  fontSize: '0.78rem',
+                  borderRadius: 999,
+                  background: !useAgGrid ? '#FFFFFF' : 'transparent',
+                  color: !useAgGrid ? '#003087' : '#64748B',
+                  fontWeight: !useAgGrid ? 700 : 500,
+                  boxShadow: !useAgGrid ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  border: 'none',
+                }}
+                onClick={() => setUseAgGrid(false)}
+              >
+                <TableIcon size={14} />
+                <span>Standard Table</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="loading-state" aria-live="polite" style={{ padding: 60 }}>
+            Loading payment obligations…
+          </div>
+        ) : obligations.length === 0 ? (
+          <div className="empty-state" style={{ padding: 60 }}>
+            <AlertCircle size={32} color="#94A3B8" style={{ marginBottom: 12 }} />
+            <p style={{ fontWeight: 600, fontSize: '1rem', color: '#334155' }}>No obligations found.</p>
+            <p className="empty-hint" style={{ marginTop: 6 }}>
+              Run <code>python seed.py</code> in the backend or use the <strong>Import</strong> tab to ingest obligations.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* AG Grid View with Generous Spacing */}
+            {useAgGrid ? (
               <div
                 className="ag-theme-quartz-paypal"
-                style={{ height: 520, width: '100%', marginBottom: 20 }}
+                style={{ height: 560, width: '100%', borderRadius: 10, overflow: 'hidden' }}
               >
                 <AgGridReact
                   rowData={obligations}
@@ -317,94 +384,96 @@ export default function ObligationsPage() {
                   quickFilterText={quickFilterText}
                   pagination={true}
                   paginationPageSize={15}
-                  paginationPageSizeSelector={[10, 15, 25, 50]}
+                  paginationPageSizeSelector={[15, 25, 50, 100]}
                   animateRows={true}
+                  headerHeight={48}
+                  rowHeight={52}
                 />
               </div>
-            </div>
-          ) : (
-            /* Standard Table View */
-            <div className="table-wrapper" role="region" aria-label="Obligations table">
-              <table className="obligations-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Invoice Ref</th>
-                    <th scope="col">Supplier</th>
-                    <th scope="col">Country</th>
-                    <th scope="col" className="col-amount">Amount</th>
-                    <th scope="col">Currency</th>
-                    <th scope="col">Due Date</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {obligations.map((ob: Obligation) => (
-                    <tr key={ob.id} className={ob.currency === 'ZZZ' ? 'row-warning' : ''}>
-                      <td className="col-invoice">
-                        <code>{ob.invoice_reference}</code>
-                      </td>
-                      <td>{ob.supplier.display_name}</td>
-                      <td>
-                        <span className="country-badge" title={ob.supplier.country_code}>
-                          {ob.supplier.country_code}
-                        </span>
-                      </td>
-                      <td className="col-amount">
-                        {formatAmount(ob.amount, ob.currency)}
-                      </td>
-                      <td>
-                        <span className={ob.currency === 'ZZZ' ? 'currency-invalid' : 'currency-code'}>
-                          {ob.currency}
-                          {ob.currency === 'ZZZ' && ' ⚠'}
-                        </span>
-                      </td>
-                      <td>{ob.due_at}</td>
-                      <td>
-                        <StatusBadge status={ob.status as ObligationStatus} />
-                      </td>
-                      <td className="col-notes">
-                        <span className="notes-text" title={ob.notes ?? ''}>
-                          {ob.notes ?? '—'}
-                        </span>
-                      </td>
+            ) : (
+              /* Standard Table View */
+              <div className="table-wrapper" role="region" aria-label="Obligations table">
+                <table className="obligations-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Invoice Ref</th>
+                      <th scope="col">Supplier</th>
+                      <th scope="col">Country</th>
+                      <th scope="col" className="col-amount">Amount</th>
+                      <th scope="col">Currency</th>
+                      <th scope="col">Due Date</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Notes</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {obligations.map((ob: Obligation) => (
+                      <tr key={ob.id} className={ob.currency === 'ZZZ' ? 'row-warning' : ''}>
+                        <td className="col-invoice">
+                          <code>{ob.invoice_reference}</code>
+                        </td>
+                        <td>{ob.supplier.display_name}</td>
+                        <td>
+                          <span className="country-badge" title={ob.supplier.country_code}>
+                            {ob.supplier.country_code}
+                          </span>
+                        </td>
+                        <td className="col-amount">
+                          {formatAmount(ob.amount, ob.currency)}
+                        </td>
+                        <td>
+                          <span className={ob.currency === 'ZZZ' ? 'currency-invalid' : 'currency-code'}>
+                            {ob.currency}
+                            {ob.currency === 'ZZZ' && ' ⚠'}
+                          </span>
+                        </td>
+                        <td>{ob.due_at}</td>
+                        <td>
+                          <StatusBadge status={ob.status as ObligationStatus} />
+                        </td>
+                        <td className="col-notes">
+                          <span className="notes-text" title={ob.notes ?? ''}>
+                            {ob.notes ?? '—'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-          {/* Pagination for server queries */}
-          {totalPages > 1 && (
-            <div className="pagination" role="navigation" aria-label="Pagination">
-              <button
-                className="btn btn-secondary"
-                onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-                disabled={offset === 0}
-                aria-label="Previous page"
-              >
-                ← Prev
-              </button>
-              <span className="pagination-info">
-                Page {currentPage} of {totalPages} ({total} total)
-              </span>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setOffset(offset + PAGE_SIZE)}
-                disabled={offset + PAGE_SIZE >= total}
-                aria-label="Next page"
-              >
-                Next →
-              </button>
-            </div>
-          )}
+            {/* Server Pagination */}
+            {totalPages > 1 && (
+              <div className="pagination" role="navigation" aria-label="Pagination" style={{ marginTop: 24 }}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+                  disabled={offset === 0}
+                  aria-label="Previous page"
+                >
+                  ← Prev
+                </button>
+                <span className="pagination-info" style={{ fontWeight: 600 }}>
+                  Page {currentPage} of {totalPages} ({total} total obligations)
+                </span>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setOffset(offset + PAGE_SIZE)}
+                  disabled={offset + PAGE_SIZE >= total}
+                  aria-label="Next page"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
-          <p className="disclaimer">
-            ⓘ Amounts displayed for demonstration only. All payments execute in PayPal Sandbox test environment.
-          </p>
-        </>
-      )}
+      <p className="disclaimer" style={{ marginTop: 18 }}>
+        ⓘ Amounts displayed for demonstration only. All payments execute in PayPal Sandbox test environment.
+      </p>
     </div>
   )
 }

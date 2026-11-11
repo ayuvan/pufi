@@ -140,6 +140,43 @@ def create_batch(
 
 
 # ===========================================================================
+# GET /batches
+# ===========================================================================
+
+@router.get(
+    "/batches",
+    response_model=list[BatchOut],
+    summary="List all payment batches",
+    description="Returns all payment batches ordered by created_at descending.",
+)
+def list_batches(
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+) -> list[BatchOut]:
+    business_id = _get_default_business_id(db)
+    batches = (
+        db.query(PaymentBatch)
+        .filter(PaymentBatch.business_id == business_id)
+        .order_by(PaymentBatch.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    results = []
+    for b in batches:
+        batch_obs = (
+            db.query(BatchObligation)
+            .options(joinedload(BatchObligation.obligation).joinedload(Obligation.supplier))
+            .filter(BatchObligation.batch_id == b.id)
+            .all()
+        )
+        obs = [bo.obligation for bo in batch_obs if bo.obligation]
+        results.append(_batch_to_schema(b, obs, db))
+    return results
+
+
+# ===========================================================================
 # GET /batches/{batch_id}
 # ===========================================================================
 
