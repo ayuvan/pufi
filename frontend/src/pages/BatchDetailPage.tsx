@@ -45,6 +45,25 @@ function formatAmount(amount: string, currency: string): string {
   }
 }
 
+function formatErrorMessage(err: unknown): string {
+  if (!err) return 'Unknown error'
+  if (typeof err === 'string') return err
+  const obj = err as Record<string, any>
+  if (obj.detail) {
+    if (typeof obj.detail === 'string') return obj.detail
+    if (typeof obj.detail === 'object') {
+      if (obj.detail.message) return String(obj.detail.message)
+      if (obj.detail.error) return String(obj.detail.error)
+      if (Array.isArray(obj.detail)) {
+        return obj.detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
+      }
+    }
+  }
+  if (obj.error?.message) return String(obj.error.message)
+  if (obj.message) return String(obj.message)
+  return JSON.stringify(err)
+}
+
 function StatusPill({ status }: { status: string }) {
   const cls = `status-badge status-${status.toLowerCase()}`
   return <span className={cls}>{status}</span>
@@ -376,12 +395,7 @@ function ApprovalPanel({
 
       {mutation.isError && (
         <div className="alert alert-error">
-          Approval failed:{' '}
-          {String(
-            (mutation.error as { error?: { message?: string } })?.error?.message ??
-              (mutation.error as { detail?: string })?.detail ??
-              'Unknown error'
-          )}
+          Approval failed: {formatErrorMessage(mutation.error)}
         </div>
       )}
 

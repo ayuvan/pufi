@@ -317,7 +317,6 @@ def analyze_batch_endpoint(
             fallback_reason=ai_result.fallback_reason,
         )
         db.add(ai_rec)
-        db.flush()  # flush into session; test harness rolls back, production commits via middleware
         # Write audit event for analysis completion
         db.add(AuditEvent(
             entity_type="BATCH",
@@ -332,6 +331,7 @@ def analyze_batch_endpoint(
                 "model_name": ai_result.model_name,
             }),
         ))
+        db.commit()  # persist analysis and recommendation so approval gate can verify it
     except Exception as exc:
         # Persistence failure must not break the analysis response
         logger.warning("Failed to persist AI recommendation: %s", exc)

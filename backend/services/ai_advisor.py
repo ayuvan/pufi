@@ -173,7 +173,7 @@ def analyze_batch(
     -------
     (AiAnalysisResult, input_summary_hash)
     """
-    model_name = os.getenv("AI_MODEL", "gemini-flash-latest")
+    model_name = os.getenv("AI_MODEL", "gemini-3.8-flash")
 
     # --- Check API key ---
     api_key = os.getenv("AI_API_KEY") or os.getenv("GEMINI_API_KEY")
