@@ -38,8 +38,55 @@ logging.basicConfig(
 async def lifespan(app: FastAPI):
     """Create all tables on startup (dev convenience).  Alembic for migrations."""
     Base.metadata.create_all(bind=engine)
+    _validate_startup_credentials()
     yield
     # Nothing to tear down for SQLite dev setup
+
+
+def _validate_startup_credentials() -> None:
+    """
+    Warn at startup if PayPal credentials appear to be placeholder values.
+
+    Rules:
+      - NEVER log the actual credential values.
+      - Only log a WARNING if the values look like unset placeholders.
+      - This is advisory only: the app continues running so the demo/simulation
+        path still works without real PayPal credentials.
+    """
+    _PLACEHOLDER_SUBSTRINGS = (
+        "your_", "placeholder", "example", "changeme", "xxx", "yyy", "zzz",
+        "<", ">", "REPLACE", "INSERT", "TODO",
+    )
+
+    client_id = os.environ.get("PAYPAL_CLIENT_ID", "")
+    client_secret = os.environ.get("PAYPAL_CLIENT_SECRET", "")
+
+    def _looks_like_placeholder(value: str) -> bool:
+        if not value or len(value) < 4:
+            return True
+        low = value.lower()
+        return any(p in low for p in _PLACEHOLDER_SUBSTRINGS)
+
+    warnings_issued = []
+    if _looks_like_placeholder(client_id):
+        warnings_issued.append("PAYPAL_CLIENT_ID")
+    if _looks_like_placeholder(client_secret):
+        warnings_issued.append("PAYPAL_CLIENT_SECRET")
+
+    if warnings_issued:
+        logger.warning(
+            "⚠  PUFI STARTUP — PayPal credential(s) appear to be unset or "
+            "placeholder values: %s.  "
+            "PayPal Sandbox payouts will be unavailable.  "
+            "Simulated providers remain fully functional.  "
+            "Set real Sandbox credentials in backend/.env to enable PayPal.",
+            ", ".join(warnings_issued),
+        )
+    else:
+        logger.info(
+            "✓ PUFI STARTUP — PayPal credential presence verified "
+            "(values are NEVER logged).  Sandbox mode active."
+        )
 
 
 # ---------------------------------------------------------------------------

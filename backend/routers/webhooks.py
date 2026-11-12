@@ -50,7 +50,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from models.db import get_db
-from models.entities import AuditEvent, PaymentInstruction
+from models.entities import (
+    ActiveBatchSubmission, AuditEvent, PaymentBatch,
+    PaymentInstruction, ProviderSubmission,
+)
+from services.audit import record_audit_event
 
 logger = logging.getLogger("pufi.webhooks")
 
@@ -249,9 +253,10 @@ async def receive_paypal_webhook(
         logger.info("Webhook duplicate ignored: event_id=%s", event_id)
         return {"status": "DUPLICATE_IGNORED", "event_id": event_id}
 
-    # --- Record raw event ---
+    # --- Record raw event with cryptographic hash chaining ---
     now = datetime.now(timezone.utc)
-    db.add(AuditEvent(
+    record_audit_event(
+        db=db,
         entity_type="WEBHOOK",
         entity_id=event_id or "unknown",
         event_type=event_type,
@@ -262,17 +267,18 @@ async def receive_paypal_webhook(
             "transmission_id": transmission_id,
             "verified": True,
         }),
-    ))
+    )
 
     # --- Process known event types ---
     new_status, settlement_evidence = _EVENT_TYPE_MAP.get(event_type, (None, None))
+    resource = event.get("resource", {})
 
     if new_status:
         # Extract payout_item_id from event resource
-        resource = event.get("resource", {})
         payout_item_id = resource.get("payout_item_id") or resource.get("payout_item", {}).get("payout_item_id")
         sender_item_id = resource.get("payout_item", {}).get("sender_item_id")
         transaction_id = resource.get("transaction_id")
+        payout_batch_id = resource.get("payout_batch_id")
 
         instruction = None
         if payout_item_id:
@@ -289,18 +295,141 @@ async def receive_paypal_webhook(
             )
 
         if instruction:
-            instruction.status = new_status
-            instruction.settlement_evidence = settlement_evidence
-            instruction.paypal_item_status = event_type.split(".")[-1]
-            if transaction_id:
-                instruction.paypal_transaction_id = transaction_id
-            instruction.updated_at = now
-            logger.info(
-                "Webhook applied: event=%s instruction=%s new_status=%s",
-                event_type, instruction.id, new_status,
-            )
+            # Enforce state precedence: late webhooks cannot regress COMPLETED to non-terminal
+            if instruction.status == "COMPLETED" and new_status not in ("FAILED", "RETURNED", "REFUNDED", "REVERSED"):
+                logger.info(
+                    "State precedence enforced: ignoring late webhook %s for already COMPLETED instruction %s",
+                    event_type, instruction.id,
+                )
+                record_audit_event(
+                    db=db,
+                    entity_type="INSTRUCTION",
+                    entity_id=instruction.id,
+                    event_type="WEBHOOK_OUT_OF_ORDER_IGNORED",
+                    actor="PAYPAL_WEBHOOK",
+                    correlation_id=event_id_hash,
+                    details_redacted=json.dumps({
+                        "event_type": event_type,
+                        "current_status": instruction.status,
+                        "attempted_status": new_status,
+                    }),
+                )
+            else:
+                instruction.status = new_status
+                instruction.settlement_evidence = settlement_evidence
+                instruction.paypal_item_status = event_type.split(".")[-1]
+                if transaction_id:
+                    instruction.paypal_transaction_id = transaction_id
+                if payout_item_id and not instruction.paypal_payout_item_id:
+                    instruction.paypal_payout_item_id = payout_item_id
+                instruction.updated_at = now
+
+                # Correlate and update associated ProviderSubmission
+                submission = (
+                    db.query(ProviderSubmission)
+                    .filter(ProviderSubmission.batch_id == instruction.batch_id)
+                    .order_by(ProviderSubmission.created_at.desc())
+                    .first()
+                )
+                if submission:
+                    if payout_batch_id and not submission.paypal_payout_batch_id:
+                        submission.paypal_payout_batch_id = payout_batch_id
+                    if submission.status == "UNKNOWN":
+                        submission.status = "SUBMITTED"
+
+                # Re-evaluate associated PaymentBatch status across all instructions
+                batch = db.query(PaymentBatch).filter(PaymentBatch.id == instruction.batch_id).first()
+                if batch:
+                    all_instrs = (
+                        db.query(PaymentInstruction)
+                        .filter(PaymentInstruction.batch_id == batch.id)
+                        .all()
+                    )
+                    total = len(all_instrs)
+                    completed_count = sum(1 for i in all_instrs if i.status == "COMPLETED")
+                    failed_count = sum(1 for i in all_instrs if i.status in ("FAILED", "RETURNED", "REFUNDED", "REVERSED"))
+                    unresolved_count = sum(1 for i in all_instrs if i.status in ("UNKNOWN", "SUBMITTED", "PENDING", "APPROVED"))
+
+                    if total > 0:
+                        if completed_count == total:
+                            batch.status = "COMPLETED"
+                        elif failed_count == total:
+                            batch.status = "FAILED"
+                        elif completed_count > 0 and failed_count > 0:
+                            batch.status = "PARTIALLY_COMPLETED"
+                        elif unresolved_count > 0:
+                            batch.status = "SUBMITTED"
+
+                    if batch.status in ("COMPLETED", "FAILED", "PARTIALLY_COMPLETED"):
+                        db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch.id).delete()
+
+                record_audit_event(
+                    db=db,
+                    entity_type="INSTRUCTION",
+                    entity_id=instruction.id,
+                    event_type="WEBHOOK_RECONCILIATION_APPLIED",
+                    actor="PAYPAL_WEBHOOK",
+                    correlation_id=event_id_hash,
+                    details_redacted=json.dumps({
+                        "event_type": event_type,
+                        "instruction_status": instruction.status,
+                        "batch_status": batch.status if batch else None,
+                        "payout_item_id": payout_item_id,
+                    }),
+                )
+                logger.info(
+                    "Webhook applied: event=%s instruction=%s new_status=%s batch_status=%s",
+                    event_type, instruction.id, new_status, batch.status if batch else "None",
+                )
         else:
             logger.info("Webhook event %s: no matching instruction found.", event_type)
+
+    elif event_type.startswith("PAYMENT.PAYOUTSBATCH."):
+        # Handle batch-level events
+        batch_header = resource.get("batch_header", {})
+        payout_batch_id = batch_header.get("payout_batch_id") or resource.get("payout_batch_id")
+        sender_batch_id = batch_header.get("sender_batch_header", {}).get("sender_batch_id")
+
+        submission = None
+        if payout_batch_id:
+            submission = (
+                db.query(ProviderSubmission)
+                .filter(ProviderSubmission.paypal_payout_batch_id == payout_batch_id)
+                .first()
+            )
+        if not submission and sender_batch_id:
+            submission = (
+                db.query(ProviderSubmission)
+                .filter(ProviderSubmission.sender_batch_id == sender_batch_id)
+                .first()
+            )
+
+        if submission:
+            batch = db.query(PaymentBatch).filter(PaymentBatch.id == submission.batch_id).first()
+            if event_type == "PAYMENT.PAYOUTSBATCH.SUCCESS":
+                submission.paypal_batch_status = "SUCCESS"
+                if submission.status == "UNKNOWN":
+                    submission.status = "SUBMITTED"
+            elif event_type == "PAYMENT.PAYOUTSBATCH.DENIED":
+                submission.paypal_batch_status = "DENIED"
+                submission.status = "FAILED"
+                if batch:
+                    batch.status = "FAILED"
+                    db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch.id).delete()
+
+            record_audit_event(
+                db=db,
+                entity_type="BATCH",
+                entity_id=submission.batch_id,
+                event_type="WEBHOOK_BATCH_STATUS_APPLIED",
+                actor="PAYPAL_WEBHOOK",
+                correlation_id=event_id_hash,
+                details_redacted=json.dumps({
+                    "event_type": event_type,
+                    "paypal_batch_status": submission.paypal_batch_status,
+                }),
+            )
+            logger.info("Batch-level webhook applied: event=%s batch=%s", event_type, submission.batch_id)
     else:
         logger.info("Webhook event %s: unhandled type, acknowledged.", event_type)
 

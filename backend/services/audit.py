@@ -12,7 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -65,6 +65,15 @@ def record_audit_event(
     if entity_id:
         query = query.filter(AuditEvent.entity_id == entity_id)
     latest = query.order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc()).first()
+
+    if not created_at and latest and latest.created_at:
+        latest_time = latest.created_at
+        if latest_time.tzinfo is None and now.tzinfo is not None:
+            latest_time = latest_time.replace(tzinfo=timezone.utc)
+        elif latest_time.tzinfo is not None and now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        if now <= latest_time:
+            now = latest_time + timedelta(microseconds=1000)
     
     prev_hash = latest.event_hash if (latest and latest.event_hash) else GENESIS_HASH
     event_hash = compute_event_hash(
@@ -113,6 +122,19 @@ def verify_audit_integrity(db: Session, entity_id: Optional[str] = None) -> Tupl
     
     if not events:
         return True, None, None
+
+    # Reorder events along the cryptographic chain if equal timestamps caused secondary sort ambiguity
+    genesis_candidates = [e for e in events if not e.prev_hash or e.prev_hash == GENESIS_HASH]
+    if len(genesis_candidates) == 1:
+        by_prev = {e.prev_hash: e for e in events if e.prev_hash and e.prev_hash != GENESIS_HASH}
+        ordered = [genesis_candidates[0]]
+        curr = genesis_candidates[0]
+        while curr.event_hash and curr.event_hash in by_prev:
+            next_ev = by_prev[curr.event_hash]
+            ordered.append(next_ev)
+            curr = next_ev
+        if len(ordered) == len(events):
+            events = ordered
 
     expected_prev = GENESIS_HASH
     

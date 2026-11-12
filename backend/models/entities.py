@@ -242,7 +242,7 @@ class PaymentBatch(Base):
         UniqueConstraint("business_id", "batch_reference", name="uq_batch_business_ref"),
         CheckConstraint(
             "status IN ('DRAFT','PENDING_APPROVAL','APPROVED','REJECTED',"
-            "'SUBMITTED','UNKNOWN','COMPLETED','PARTIALLY_COMPLETED','FAILED','CANCELLED')",
+            "'SUBMISSION_PENDING','SUBMITTED','UNKNOWN','COMPLETED','PARTIALLY_COMPLETED','FAILED','CANCELLED')",
             name="ck_batch_status_valid",
         ),
     )
@@ -473,7 +473,8 @@ class PaymentInstruction(Base):
         CheckConstraint(
             "settlement_evidence IN ('NOT_APPLICABLE','NOT_CONFIRMED',"
             "'PROVIDER_REPORTED_COMPLETE','EXTERNAL_EVIDENCE_REQUIRED',"
-            "'RECONCILED','EXCEPTION')",
+            "'RECONCILED','EXCEPTION',"
+            "'SIMULATED_IMMEDIATE_SETTLEMENT','SIMULATED_PENDING_SETTLEMENT')",
             name="ck_instruction_settlement_evidence_valid",
         ),
     )
@@ -528,6 +529,11 @@ class ProviderSubmission(Base):
     response_summary: str = Column(Text, nullable=True)
     error_message: str = Column(Text, nullable=True)
 
+    # Phase 1: Durable Submission Intent Tracking
+    intended_amount: Decimal = Column(Numeric(19, 4), nullable=True)
+    currency: str = Column(String(3), nullable=True)
+    item_count: int = Column(Integer, nullable=True, default=0)
+
     created_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
 
     __table_args__ = (
@@ -545,6 +551,29 @@ class ProviderSubmission(Base):
             f"<ProviderSubmission batch={self.batch_id!r} provider={self.provider_code!r} "
             f"sender_batch_id={self.sender_batch_id!r} status={self.status!r}>"
         )
+
+
+# ---------------------------------------------------------------------------
+# ActiveBatchSubmission (Priority 1 — Concurrency Lock Table)
+# ---------------------------------------------------------------------------
+
+class ActiveBatchSubmission(Base):
+    """
+    Phase 2: Database-Enforced Concurrent Duplicate Submission Protection.
+
+    Primary key constraint on batch_id guarantees at the database engine level
+    that no two threads, processes, or database sessions can concurrently initiate
+    an external payout for the same batch.
+    """
+    __tablename__ = "active_batch_submissions"
+
+    batch_id: str = Column(String(36), primary_key=True)
+    submission_id: str = Column(String(36), nullable=False)
+    created_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
+
+    def __repr__(self) -> str:
+        return f"<ActiveBatchSubmission batch={self.batch_id!r} sub={self.submission_id!r}>"
+
 
 
 # ---------------------------------------------------------------------------

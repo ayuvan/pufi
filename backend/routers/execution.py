@@ -125,20 +125,28 @@ def submit_batch_endpoint(
 
     result = submit_batch(batch_id=batch_id, db=db, correlation_id=correlation_id)
 
-    if not result.success and result.submission_status == "FAILED":
-        # Don't rollback — ProviderSubmission record was already persisted
-        # so the idempotency key is preserved for future retries
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "error": "SUBMISSION_FAILED",
-                "message": result.error_message,
-                "is_simulated": result.is_simulated,
-                "paypal_configured": result.paypal_configured,
-            },
-        )
-
-    db.commit()
+    if not result.success:
+        if result.error_message and "CONCURRENT_SUBMISSION_CONFLICT" in result.error_message:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "CONCURRENT_SUBMISSION_CONFLICT",
+                    "message": result.error_message,
+                    "batch_id": batch_id,
+                },
+            )
+        if result.submission_status == "FAILED":
+            # Don't rollback — ProviderSubmission record was already persisted
+            # so the idempotency key is preserved for future retries
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "SUBMISSION_FAILED",
+                    "message": result.error_message,
+                    "is_simulated": result.is_simulated,
+                    "paypal_configured": result.paypal_configured,
+                },
+            )
 
     return SubmissionResponse(
         batch_id=result.batch_id,

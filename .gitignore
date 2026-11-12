@@ -37,3 +37,7 @@ Thumbs.db
 .coverage
 htmlcov/
 
+
+# Release packaging artifacts (never commit zips or release dirs)
+*.zip
+release/

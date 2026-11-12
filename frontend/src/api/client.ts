@@ -132,6 +132,35 @@ export interface BatchCreateRequest {
 
 const DEMO_API_KEY = (import.meta as any).env?.VITE_DEMO_API_KEY || ''
 
+/**
+ * Structured API error thrown by apiFetch on non-2xx responses.
+ * Extends Error so React Query v5 accepts it and components can call .message.
+ * The raw backend response body is attached as `body` for detailed inspection.
+ */
+export class ApiResponseError extends Error {
+  status: number
+  body: Record<string, any>
+
+  constructor(status: number, body: Record<string, any>) {
+    // Extract the best human-readable message from the body
+    let msg = `HTTP ${status}`
+    const detail = body?.detail
+    if (typeof detail === 'string') {
+      msg = detail
+    } else if (detail && typeof detail === 'object') {
+      msg = detail.message || detail.error || JSON.stringify(detail)
+    } else if (body?.message) {
+      msg = String(body.message)
+    } else if (body?.error?.message) {
+      msg = String(body.error.message)
+    }
+    super(msg)
+    this.name = 'ApiResponseError'
+    this.status = status
+    this.body = body
+  }
+}
+
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json', ...(DEMO_API_KEY ? { 'X-Api-Key': DEMO_API_KEY } : {}), ...(options?.headers as Record<string, string>) },
@@ -139,7 +168,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   })
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: { code: 'UNKNOWN', message: res.statusText } }))
-    throw body as ApiError
+    throw new ApiResponseError(res.status, body)
   }
   return res.json() as Promise<T>
 }

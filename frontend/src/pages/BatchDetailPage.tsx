@@ -54,6 +54,8 @@ function formatAmount(amount: string | null | undefined, currency: string): stri
 function formatErrorMessage(err: unknown): string {
   if (!err) return 'Unknown error'
   if (typeof err === 'string') return err
+  // ApiResponseError (and any Error subclass) — use .message directly
+  if (err instanceof Error) return err.message || err.toString()
   const obj = err as Record<string, any>
   if (obj.detail) {
     if (typeof obj.detail === 'string') return obj.detail
@@ -63,6 +65,7 @@ function formatErrorMessage(err: unknown): string {
       if (Array.isArray(obj.detail)) {
         return obj.detail.map((d: any) => d.msg || JSON.stringify(d)).join(', ')
       }
+      return JSON.stringify(obj.detail)
     }
   }
   if (obj.error?.message) return String(obj.error.message)

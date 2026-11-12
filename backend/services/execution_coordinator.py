@@ -28,10 +28,11 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from models.entities import (
-    AuditEvent, BatchObligation, Obligation, PaymentBatch,
+    ActiveBatchSubmission, AuditEvent, BatchObligation, Obligation, PaymentBatch,
     PaymentInstruction, ProviderSubmission, Supplier,
 )
 from services.audit import record_audit_event
@@ -182,7 +183,7 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
             disclaimer=_disclaimer(),
         )
 
-    if batch.status != "APPROVED":
+    if batch.status not in ("APPROVED", "UNKNOWN"):
         return SubmissionResult(
             success=False, batch_id=batch_id, sender_batch_id="",
             paypal_payout_batch_id=None, paypal_batch_status=None,
@@ -193,7 +194,24 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
             disclaimer=_disclaimer(),
         )
 
-    # --- 2. Duplicate submission & UNKNOWN state guard (Phase 1) ---
+    # --- 2. Database-enforced concurrent lock guard (Phase 2) ---
+    active_lock = db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch_id).first()
+    if active_lock:
+        return SubmissionResult(
+            success=False,
+            batch_id=batch_id,
+            sender_batch_id="",
+            paypal_payout_batch_id=None,
+            paypal_batch_status=None,
+            submission_status="FAILED",
+            submitted_at=now.isoformat(),
+            is_simulated=not is_configured(),
+            paypal_configured=is_configured(),
+            error_message="CONCURRENT_SUBMISSION_CONFLICT: A submission is currently in progress for this batch.",
+            disclaimer=_disclaimer(),
+        )
+
+    # --- 3. Duplicate submission & UNKNOWN state guard (Phase 1) ---
     existing = (
         db.query(ProviderSubmission)
         .filter(
@@ -253,7 +271,7 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
             disclaimer=_disclaimer(),
         )
 
-    # --- 3. Load obligations and build instructions ---
+    # --- 4. Load obligations and build instructions ---
     batch_obs = (
         db.query(BatchObligation)
         .filter(BatchObligation.batch_id == batch_id)
@@ -268,7 +286,13 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
     )
 
     instructions: list[PaymentInstruction] = []
+    total_intended_amount = Decimal("0.00")
+    primary_currency = "USD"
+
     for ob in obligations:
+        ob_amount = Decimal(str(ob.amount))
+        total_intended_amount += ob_amount
+        primary_currency = ob.currency.upper()
         existing_instr = (
             db.query(PaymentInstruction)
             .filter(
@@ -286,7 +310,7 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
                 batch_id=batch_id,
                 obligation_id=ob.id,
                 provider_code=provider_code,
-                amount=Decimal(str(ob.amount)),
+                amount=ob_amount,
                 currency=ob.currency.upper(),
                 idempotency_key=idem_key,
                 sender_item_id=sender_item_id,
@@ -298,20 +322,9 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
 
     db.flush()
 
-    # --- 4. Generate stable sender_batch_id; persist submission record BEFORE API call ---
+    # --- 5. Generate stable sender_batch_id & Validate Recipients ---
     sender_batch_id = f"PUFI-{batch_id[:8]}-{uuid.uuid4().hex[:8]}"
 
-    submission = ProviderSubmission(
-        batch_id=batch_id,
-        provider_code=provider_code,
-        sender_batch_id=sender_batch_id,
-        status="PENDING",
-        created_at=now,
-    )
-    db.add(submission)
-    db.flush()   # persist BEFORE API call (idempotency requirement)
-
-    # --- 5. Build payout items & Validate Recipients (Phase 2) ---
     payout_items = []
     for instr in instructions:
         ob = next((o for o in obligations if o.id == instr.obligation_id), None)
@@ -320,9 +333,6 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
         if provider_code == "PAYPAL_SANDBOX":
             receiver_email, err = resolve_sandbox_recipient(supplier)
             if not receiver_email:
-                submission.status = "FAILED"
-                submission.error_message = f"INVALID_RECIPIENT_CONFIGURATION: {err}"
-                db.flush()
                 return SubmissionResult(
                     success=False,
                     batch_id=batch_id,
@@ -350,18 +360,89 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
             currency=instr.currency,
         ))
 
-    # --- 6. Provider Dispatch Architecture (Phase 3) ---
-    submit_time = datetime.now(timezone.utc)
-    submission.submitted_at = submit_time
-    submission.response_at = submit_time
+    # --- 6. TRANSACTION 1: Persist Durable Submission Intent & Active Lock (Phase 1 & 2) ---
+    submission = ProviderSubmission(
+        batch_id=batch_id,
+        provider_code=provider_code,
+        sender_batch_id=sender_batch_id,
+        status="PENDING",
+        intended_amount=total_intended_amount,
+        currency=primary_currency,
+        item_count=len(payout_items),
+        created_at=now,
+    )
+    db.add(submission)
+    db.flush()  # populate submission.id
 
-    if provider_code == "PAYPAL_SANDBOX":
-        paypal_result = submit_payout(
+    submission_id = submission.id
+    active_submission = ActiveBatchSubmission(
+        batch_id=batch_id,
+        submission_id=submission_id,
+        created_at=now,
+    )
+    db.add(active_submission)
+    batch.status = "SUBMISSION_PENDING"
+
+    record_audit_event(
+        db=db,
+        entity_type="BATCH",
+        entity_id=batch_id,
+        event_type="SUBMISSION_INTENT_COMMITTED",
+        actor="SYSTEM",
+        correlation_id=correlation_id,
+        details_redacted=json.dumps({
+            "submission_id": submission_id,
+            "sender_batch_id": sender_batch_id,
+            "provider_code": provider_code,
+            "intended_amount": str(total_intended_amount),
+            "currency": primary_currency,
+            "item_count": len(payout_items),
+        }),
+    )
+
+    try:
+        db.commit()  # TRANSACTION 1 COMMITTED TO DISK BEFORE CALLING EXTERNAL API!
+    except IntegrityError:
+        db.rollback()
+        return SubmissionResult(
+            success=False,
+            batch_id=batch_id,
             sender_batch_id=sender_batch_id,
-            items=payout_items,
+            paypal_payout_batch_id=None,
+            paypal_batch_status=None,
+            submission_status="FAILED",
+            submitted_at=now.isoformat(),
+            is_simulated=not is_configured(),
+            paypal_configured=is_configured(),
+            error_message="CONCURRENT_SUBMISSION_CONFLICT: A submission is currently in progress for this batch.",
+            disclaimer=_disclaimer(),
         )
 
-        if paypal_result.success:
+    # --- 7. EXTERNAL NETWORK CALL (No database transaction held open!) ---
+    submit_time = datetime.now(timezone.utc)
+
+    if provider_code == "PAYPAL_SANDBOX":
+        paypal_result = None
+        network_exc_msg = None
+        try:
+            paypal_result = submit_payout(
+                sender_batch_id=sender_batch_id,
+                items=payout_items,
+            )
+        except Exception as exc:
+            logger.exception("Unexpected exception during PayPal payout submission: %s", exc)
+            network_exc_msg = str(exc)
+
+        # --- 8. TRANSACTION 2: Record Provider Response ---
+        submission = db.query(ProviderSubmission).filter(ProviderSubmission.id == submission_id).first()
+        batch = db.query(PaymentBatch).filter(PaymentBatch.id == batch_id).first()
+        instructions = db.query(PaymentInstruction).filter(PaymentInstruction.batch_id == batch_id).all()
+        active_sub = db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch_id).first()
+
+        submission.submitted_at = submit_time
+        submission.response_at = submit_time
+
+        if paypal_result is not None and paypal_result.success:
             submission.status = "SUBMITTED"
             submission.paypal_payout_batch_id = paypal_result.paypal_payout_batch_id
             submission.paypal_batch_status = paypal_result.paypal_batch_status
@@ -375,59 +456,174 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
                 instr.updated_at = submit_time
             batch.status = "SUBMITTED"
             final_status = "SUBMITTED"
-        elif paypal_result.error_message and "timed out" in paypal_result.error_message.lower():
+
+            if active_sub:
+                db.delete(active_sub)
+
+            record_audit_event(
+                db=db,
+                entity_type="BATCH",
+                entity_id=batch_id,
+                event_type="SUBMITTED",
+                actor="SYSTEM",
+                correlation_id=correlation_id,
+                details_redacted=json.dumps({
+                    "sender_batch_id": sender_batch_id,
+                    "provider_code": provider_code,
+                    "paypal_payout_batch_id": paypal_result.paypal_payout_batch_id,
+                    "submission_status": final_status,
+                    "is_simulated": paypal_result.is_simulated,
+                    "paypal_configured": is_configured(),
+                    "item_count": len(instructions),
+                }),
+            )
+            db.commit()
+
+            return SubmissionResult(
+                success=True,
+                batch_id=batch_id,
+                sender_batch_id=sender_batch_id,
+                paypal_payout_batch_id=paypal_result.paypal_payout_batch_id,
+                paypal_batch_status=paypal_result.paypal_batch_status,
+                submission_status=final_status,
+                submitted_at=submit_time.isoformat(),
+                is_simulated=paypal_result.is_simulated,
+                paypal_configured=is_configured(),
+                error_message=None,
+                disclaimer=_disclaimer(),
+            )
+
+        elif (
+            paypal_result is None
+            or (
+                paypal_result.error_message
+                and (
+                    "timed out" in paypal_result.error_message.lower()
+                    or "timeout" in paypal_result.error_message.lower()
+                )
+            )
+        ):
+            # Uncertain outcome: do NOT assume rejection. Mark UNKNOWN.
+            timeout_msg = (
+                paypal_result.error_message
+                if paypal_result and paypal_result.error_message
+                else f"Network/Process timeout during provider communication: {network_exc_msg}"
+            )
             submission.status = "UNKNOWN"
-            submission.error_message = paypal_result.error_message
+            submission.error_message = timeout_msg
             batch.status = "UNKNOWN"
             for instr in instructions:
                 instr.status = "UNKNOWN"
                 instr.updated_at = submit_time
             final_status = "UNKNOWN"
+
+            if active_sub:
+                db.delete(active_sub)
+
+            record_audit_event(
+                db=db,
+                entity_type="BATCH",
+                entity_id=batch_id,
+                event_type="SUBMISSION_TIMEOUT_UNKNOWN",
+                actor="SYSTEM",
+                correlation_id=correlation_id,
+                details_redacted=json.dumps({
+                    "sender_batch_id": sender_batch_id,
+                    "provider_code": provider_code,
+                    "error_message": timeout_msg,
+                    "submission_status": "UNKNOWN",
+                }),
+            )
+            db.commit()
+
+            return SubmissionResult(
+                success=False,
+                batch_id=batch_id,
+                sender_batch_id=sender_batch_id,
+                paypal_payout_batch_id=None,
+                paypal_batch_status=None,
+                submission_status="UNKNOWN",
+                submitted_at=submit_time.isoformat(),
+                is_simulated=not is_configured(),
+                paypal_configured=is_configured(),
+                error_message=timeout_msg,
+                disclaimer=_disclaimer(),
+            )
+
         elif paypal_result.is_simulated:
             submission.status = "PENDING"
             submission.error_message = paypal_result.error_message
             final_status = "FAILED"
+            batch.status = "FAILED"
+            if active_sub:
+                db.delete(active_sub)
+            record_audit_event(
+                db=db,
+                entity_type="BATCH",
+                entity_id=batch_id,
+                event_type="SUBMISSION_UNCONFIGURED_FAILED",
+                actor="SYSTEM",
+                correlation_id=correlation_id,
+                details_redacted=json.dumps({"error": paypal_result.error_message}),
+            )
+            db.commit()
+
+            return SubmissionResult(
+                success=False,
+                batch_id=batch_id,
+                sender_batch_id=sender_batch_id,
+                paypal_payout_batch_id=None,
+                paypal_batch_status=None,
+                submission_status="FAILED",
+                submitted_at=submit_time.isoformat(),
+                is_simulated=True,
+                paypal_configured=False,
+                error_message=paypal_result.error_message,
+                disclaimer=_disclaimer(),
+            )
+
         else:
+            # Confirmed provider rejection (e.g. 400 Bad Request, unparseable payload)
             submission.status = "FAILED"
             submission.error_message = paypal_result.error_message
+            batch.status = "FAILED"
             for instr in instructions:
                 instr.status = "FAILED"
                 instr.error_message = paypal_result.error_message
                 instr.updated_at = submit_time
             final_status = "FAILED"
 
-        # Record hash-chained audit event (Phase 5)
-        record_audit_event(
-            db=db,
-            entity_type="BATCH",
-            entity_id=batch_id,
-            event_type="SUBMITTED" if final_status != "UNKNOWN" else "SUBMISSION_TIMEOUT_UNKNOWN",
-            actor="SYSTEM",
-            correlation_id=correlation_id,
-            details_redacted=json.dumps({
-                "sender_batch_id": sender_batch_id,
-                "provider_code": provider_code,
-                "paypal_payout_batch_id": paypal_result.paypal_payout_batch_id,
-                "submission_status": final_status,
-                "is_simulated": paypal_result.is_simulated,
-                "paypal_configured": is_configured(),
-                "item_count": len(instructions),
-            }),
-        )
+            if active_sub:
+                db.delete(active_sub)
 
-        return SubmissionResult(
-            success=paypal_result.success,
-            batch_id=batch_id,
-            sender_batch_id=sender_batch_id,
-            paypal_payout_batch_id=paypal_result.paypal_payout_batch_id,
-            paypal_batch_status=paypal_result.paypal_batch_status,
-            submission_status=final_status,
-            submitted_at=submit_time.isoformat(),
-            is_simulated=paypal_result.is_simulated,
-            paypal_configured=is_configured(),
-            error_message=paypal_result.error_message,
-            disclaimer=_disclaimer(),
-        )
+            record_audit_event(
+                db=db,
+                entity_type="BATCH",
+                entity_id=batch_id,
+                event_type="SUBMISSION_REJECTED",
+                actor="SYSTEM",
+                correlation_id=correlation_id,
+                details_redacted=json.dumps({
+                    "sender_batch_id": sender_batch_id,
+                    "provider_code": provider_code,
+                    "error_message": paypal_result.error_message,
+                }),
+            )
+            db.commit()
+
+            return SubmissionResult(
+                success=False,
+                batch_id=batch_id,
+                sender_batch_id=sender_batch_id,
+                paypal_payout_batch_id=None,
+                paypal_batch_status=None,
+                submission_status="FAILED",
+                submitted_at=submit_time.isoformat(),
+                is_simulated=paypal_result.is_simulated,
+                paypal_configured=is_configured(),
+                error_message=paypal_result.error_message,
+                disclaimer=_disclaimer(),
+            )
 
     else:
         # Simulated Rail Execution
@@ -437,6 +633,13 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
             items=payout_items,
         )
 
+        submission = db.query(ProviderSubmission).filter(ProviderSubmission.id == submission_id).first()
+        batch = db.query(PaymentBatch).filter(PaymentBatch.id == batch_id).first()
+        instructions = db.query(PaymentInstruction).filter(PaymentInstruction.batch_id == batch_id).all()
+        active_sub = db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch_id).first()
+
+        submission.submitted_at = submit_time
+        submission.response_at = submit_time
         submission.status = "SUBMITTED"
         submission.paypal_payout_batch_id = sim_result.provider_batch_id
         submission.paypal_batch_status = sim_result.batch_status
@@ -458,6 +661,9 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
         batch.status = "COMPLETED" if provider_code == "SIMULATED_FAST" else "SUBMITTED"
         final_status = "SUBMITTED"
 
+        if active_sub:
+            db.delete(active_sub)
+
         # Record hash-chained audit event (Phase 5)
         record_audit_event(
             db=db,
@@ -475,6 +681,7 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
                 "item_count": len(instructions),
             }),
         )
+        db.commit()
 
         return SubmissionResult(
             success=True,
@@ -534,7 +741,7 @@ def refresh_batch_status(
         )
 
     if submission is None or not submission.paypal_payout_batch_id:
-        # If it was UNKNOWN without a payout batch id, record reconciliation attempt
+        # Case B: Missing provider payout batch ID — payment remains UNKNOWN
         if submission and submission.status == "UNKNOWN":
             record_audit_event(
                 db=db,
@@ -544,14 +751,15 @@ def refresh_batch_status(
                 actor="SYSTEM",
                 correlation_id=correlation_id,
                 details_redacted=json.dumps({
-                    "reason": "Missing provider payout batch ID; provider query pending webhook verification.",
+                    "reason": "Missing provider payout batch ID; payment remains UNKNOWN pending provider inquiry.",
                 }),
             )
+            db.commit()
         return StatusRefreshResult(
             success=False, batch_id=batch_id, batch_status=batch.status,
             paypal_batch_status=None, items_checked=0, completed=0,
             failed=0, pending=0, unknown=0, refreshed_at=now.isoformat(),
-            error_message="No PayPal payout batch ID found. Batch may not have been submitted successfully.",
+            error_message="No PayPal payout batch ID found. Payment remains UNKNOWN pending manual provider inquiry or webhook correlation.",
             disclaimer=_disclaimer(),
         )
 
@@ -598,8 +806,12 @@ def refresh_batch_status(
             new_status, new_evidence = _ITEM_STATUS_MAP.get(
                 pp_status, ("UNKNOWN", "NOT_CONFIRMED")
             )
-            instr.status = new_status
-            instr.settlement_evidence = new_evidence
+            # Enforce state precedence: do not regress COMPLETED unless refunded/reversed/returned
+            if instr.status == "COMPLETED" and pp_status not in ("REFUNDED", "REVERSED", "RETURNED"):
+                pass  # Keep COMPLETED
+            else:
+                instr.status = new_status
+                instr.settlement_evidence = new_evidence
             instr.paypal_payout_item_id = item_status.payout_item_id
             instr.paypal_transaction_id = item_status.transaction_id
             instr.paypal_item_status = item_status.item_status
@@ -607,7 +819,7 @@ def refresh_batch_status(
             instr.updated_at = now
 
         pp_upper = (item_status.item_status or "").upper()
-        if pp_upper == "SUCCESS":
+        if pp_upper == "SUCCESS" or (instr and instr.status == "COMPLETED"):
             counts["completed"] += 1
         elif pp_upper in ("BLOCKED", "FAILED", "RETURNED", "REFUNDED", "REVERSED"):
             counts["failed"] += 1
@@ -633,6 +845,10 @@ def refresh_batch_status(
     if was_unknown and new_batch_status in ("COMPLETED", "FAILED", "PARTIALLY_COMPLETED", "SUBMITTED"):
         submission.status = "SUBMITTED" if new_batch_status != "FAILED" else "FAILED"
 
+    # Clean up any lingering active lock if terminal or resolved
+    if new_batch_status in ("COMPLETED", "FAILED", "PARTIALLY_COMPLETED", "SUBMITTED"):
+        db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch_id).delete()
+
     # Record hash-chained audit event (Phase 5)
     event_type = "RECONCILIATION_RESOLVED" if was_unknown else "STATUS_REFRESHED"
     record_audit_event(
@@ -649,6 +865,7 @@ def refresh_batch_status(
             "counts": counts,
         }),
     )
+    db.commit()
 
     return StatusRefreshResult(
         success=True,

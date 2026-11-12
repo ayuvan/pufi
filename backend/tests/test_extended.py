@@ -58,15 +58,23 @@ SIMULATED_FAST = "SIMULATED_FAST"
 
 @pytest.fixture
 def ext_setup(db: Session):
-    """Sets up a comprehensive business with domestic, international, and incomplete suppliers."""
-    biz = Business(id="BIZ-EXT-001", display_name="[SYNTHETIC] Reliability Test Corp")
+    """Sets up a comprehensive business with domestic, international, and incomplete suppliers.
+
+    Uses uuid-based IDs to prevent UNIQUE constraint collisions when submit_batch()
+    commits internally (two-transaction pattern), breaking savepoint-based test isolation
+    for hardcoded IDs across sequential test runs against the shared in-memory schema.
+    """
+    import uuid as _uuid
+    _id = _uuid.uuid4().hex[:8]
+
+    biz = Business(id=f"BIZ-EXT-{_id}", display_name="[SYNTHETIC] Reliability Test Corp")
     db.add(biz)
     db.flush()
 
     sup_dom = Supplier(
-        id="SUP-EXT-DOM",
+        id=f"SUP-EXT-DOM-{_id}",
         business_id=biz.id,
-        external_reference="SUP-DOM-001",
+        external_reference=f"SUP-DOM-{_id}",
         display_name="Domestic Supplier US",
         country_code="US",
         recipient_reference_type="EMAIL",
@@ -74,9 +82,9 @@ def ext_setup(db: Session):
         preferred_currency="USD",
     )
     sup_de = Supplier(
-        id="SUP-EXT-DE",
+        id=f"SUP-EXT-DE-{_id}",
         business_id=biz.id,
-        external_reference="SUP-INT-001",
+        external_reference=f"SUP-INT-DE-{_id}",
         display_name="European Supplier DE",
         country_code="DE",
         recipient_reference_type="EMAIL",
@@ -84,9 +92,9 @@ def ext_setup(db: Session):
         preferred_currency="EUR",
     )
     sup_jp = Supplier(
-        id="SUP-EXT-JP",
+        id=f"SUP-EXT-JP-{_id}",
         business_id=biz.id,
-        external_reference="SUP-INT-003",
+        external_reference=f"SUP-INT-JP-{_id}",
         display_name="Japan Supplier JP",
         country_code="JP",
         recipient_reference_type="EMAIL",
@@ -94,9 +102,9 @@ def ext_setup(db: Session):
         preferred_currency="JPY",
     )
     sup_inc = Supplier(
-        id="SUP-EXT-INC",
+        id=f"SUP-EXT-INC-{_id}",
         business_id=biz.id,
-        external_reference="SUP-INC-001",
+        external_reference=f"SUP-INC-{_id}",
         display_name="Incomplete Supplier",
         country_code="US",
         recipient_reference_type="NONE",
@@ -122,9 +130,10 @@ def ext_setup(db: Session):
 def test_01_valid_payment_validation(ext_setup, db: Session):
     """Verify that synthetic valid payments pass all structural and relational checks."""
     biz = ext_setup["biz"]
+    sup_dom = ext_setup["sup_dom"]
     result = validate_import_row(
         business_id=biz.id,
-        supplier_reference="SUP-DOM-001",
+        supplier_reference=sup_dom.external_reference,
         invoice_reference="INV-VAL-001",
         amount_str="1250.50",
         currency="USD",
@@ -136,7 +145,7 @@ def test_01_valid_payment_validation(ext_setup, db: Session):
     assert len(result.errors) == 0
     assert result.amount == Decimal("1250.50")
     assert result.due_at == datetime.date(2026, 12, 15)
-    assert result.supplier.external_reference == "SUP-DOM-001"
+    assert result.supplier.external_reference == sup_dom.external_reference
 
 
 # ===========================================================================
@@ -165,7 +174,7 @@ def test_02_duplicate_invoice_detection(ext_setup, db: Session):
     # Attempt to re-import the same invoice reference for the same supplier
     dup_result = validate_import_row(
         business_id=biz.id,
-        supplier_reference="SUP-DOM-001",
+        supplier_reference=sup.external_reference,
         invoice_reference="INV-EXISTING-001",
         amount_str="500.00",
         currency="USD",
@@ -183,11 +192,13 @@ def test_02_duplicate_invoice_detection(ext_setup, db: Session):
 def test_03_invalid_amounts_and_currencies(ext_setup, db: Session):
     """Verify zero/negative amounts and invalid ISO currencies are rejected."""
     biz = ext_setup["biz"]
+    sup_dom = ext_setup["sup_dom"]
+    sup_ref = sup_dom.external_reference
 
     # Zero amount
     r_zero = validate_import_row(
         business_id=biz.id,
-        supplier_reference="SUP-DOM-001",
+        supplier_reference=sup_ref,
         invoice_reference="INV-ERR-ZERO",
         amount_str="0.00",
         currency="USD",
@@ -200,7 +211,7 @@ def test_03_invalid_amounts_and_currencies(ext_setup, db: Session):
     # Negative amount
     r_neg = validate_import_row(
         business_id=biz.id,
-        supplier_reference="SUP-DOM-001",
+        supplier_reference=sup_ref,
         invoice_reference="INV-ERR-NEG",
         amount_str="-150.00",
         currency="USD",
@@ -213,7 +224,7 @@ def test_03_invalid_amounts_and_currencies(ext_setup, db: Session):
     # Non-decimal amount
     r_nan = validate_import_row(
         business_id=biz.id,
-        supplier_reference="SUP-DOM-001",
+        supplier_reference=sup_ref,
         invoice_reference="INV-ERR-NAN",
         amount_str="ABC_INVALID",
         currency="USD",
@@ -226,7 +237,7 @@ def test_03_invalid_amounts_and_currencies(ext_setup, db: Session):
     # Unrecognized currency code
     r_curr = validate_import_row(
         business_id=biz.id,
-        supplier_reference="SUP-DOM-001",
+        supplier_reference=sup_ref,
         invoice_reference="INV-ERR-CURR",
         amount_str="100.00",
         currency="XYZ",
