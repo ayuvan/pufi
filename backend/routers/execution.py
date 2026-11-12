@@ -64,8 +64,7 @@ def approve_batch_endpoint(
 ) -> ApprovalResponse:
     correlation_id = getattr(request.state, "correlation_id", str(uuid.uuid4()))
 
-    # Enforce identity integrity: prevent caller from forging arbitrary approver identities
-    approver_id = body.approver_id
+    # Enforce identity integrity: approval actor is strictly derived from the authenticated principal
     if is_auth_enforced() and principal.auth_method != "DEV_MOCK":
         if body.approver_id and body.approver_id != principal.identity:
             logger.warning(
@@ -81,7 +80,9 @@ def approve_batch_endpoint(
                 },
             )
         approver_id = principal.identity
-    elif not approver_id:
+    elif body.approver_id and principal.auth_method == "DEV_MOCK":
+        approver_id = body.approver_id
+    else:
         approver_id = principal.identity
 
     result = approve_batch(
@@ -294,6 +295,7 @@ def list_instructions(
 def list_audit_events(
     batch_id: str,
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("AUDITOR", "CONTROLLER", "TREASURY_CHECKER")),
 ) -> list[AuditEventOut]:
     events = (
         db.query(AuditEvent)
@@ -335,6 +337,7 @@ def list_audit_events(
 def verify_audit_endpoint(
     entity_id: Optional[str] = None,
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("AUDITOR", "CONTROLLER", "TREASURY_CHECKER")),
 ) -> dict:
     result = verify_audit_chain(db=db, entity_id=entity_id)
     return result.to_dict()

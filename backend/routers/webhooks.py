@@ -63,18 +63,44 @@ router = APIRouter()
 
 PAYPAL_SANDBOX_BASE = "https://api-m.sandbox.paypal.com"
 
-# Map PayPal webhook event types to PUFI instruction status
-_EVENT_TYPE_MAP: dict[str, tuple[str, str]] = {
-    "PAYMENT.PAYOUTS-ITEM.SUCCEEDED":  ("COMPLETED",  "PROVIDER_REPORTED_COMPLETE"),
-    "PAYMENT.PAYOUTS-ITEM.FAILED":     ("FAILED",     "NOT_CONFIRMED"),
-    "PAYMENT.PAYOUTS-ITEM.BLOCKED":    ("FAILED",     "NOT_CONFIRMED"),
-    "PAYMENT.PAYOUTS-ITEM.REFUNDED":   ("FAILED",     "NOT_CONFIRMED"),
-    "PAYMENT.PAYOUTS-ITEM.RETURNED":   ("FAILED",     "NOT_CONFIRMED"),
-    "PAYMENT.PAYOUTS-ITEM.DENIED":     ("FAILED",     "NOT_CONFIRMED"),
-    "PAYMENT.PAYOUTS-ITEM.UNCLAIMED":  ("SUBMITTED",  "NOT_CONFIRMED"),
+# Map PayPal webhook event types to (instruction_status, settlement_evidence, is_refund_or_reversal)
+_EVENT_TYPE_MAP: dict[str, tuple[str, str, bool]] = {
+    "PAYMENT.PAYOUTS-ITEM.SUCCEEDED":  ("COMPLETED",  "PROVIDER_REPORTED_COMPLETE", False),
+    "PAYMENT.PAYOUTS-ITEM.FAILED":     ("FAILED",     "NOT_CONFIRMED",             False),
+    "PAYMENT.PAYOUTS-ITEM.BLOCKED":    ("FAILED",     "NOT_CONFIRMED",             False),
+    "PAYMENT.PAYOUTS-ITEM.DENIED":     ("FAILED",     "NOT_CONFIRMED",             False),
+    "PAYMENT.PAYOUTS-ITEM.UNCLAIMED":  ("SUBMITTED",  "NOT_CONFIRMED",             False),
+    "PAYMENT.PAYOUTS-ITEM.REFUNDED":   ("REFUNDED",   "FUNDS_REFUNDED",            True),
+    "PAYMENT.PAYOUTS-ITEM.RETURNED":   ("REFUNDED",   "FUNDS_RETURNED",            True),
+    "PAYMENT.PAYOUTS-ITEM.REVERSED":   ("REVERSED",   "FUNDS_REVERSED",            True),
 }
 
-TERMINAL_STATUSES: set[str] = {"COMPLETED", "FAILED", "CANCELLED"}
+# ===========================================================================
+# Explicit State Transition Matrix (Priority 2.1)
+# ===========================================================================
+
+TERMINAL_STATUSES: frozenset[str] = frozenset({"COMPLETED", "FAILED", "CANCELLED", "REFUNDED", "REVERSED"})
+REFUND_EVENT_TYPES: frozenset[str] = frozenset({
+    "PAYMENT.PAYOUTS-ITEM.REFUNDED",
+    "PAYMENT.PAYOUTS-ITEM.RETURNED",
+    "PAYMENT.PAYOUTS-ITEM.REVERSED",
+})
+
+# Allowed forward transitions: current_status -> set of allowable target statuses
+ALLOWED_TRANSITIONS: dict[str, frozenset[str]] = {
+    "CREATED": frozenset({"APPROVED", "CANCELLED"}),
+    "APPROVED": frozenset({"SUBMISSION_PENDING", "CANCELLED"}),
+    "SUBMISSION_PENDING": frozenset({"SUBMITTED", "UNKNOWN", "FAILED"}),
+    "SUBMITTED": frozenset({"COMPLETED", "FAILED", "UNKNOWN", "SUBMITTED"}),
+    "UNKNOWN": frozenset({"SUBMITTED", "COMPLETED", "FAILED", "UNKNOWN"}),
+    # Terminal states: COMPLETED can only transition to REFUNDED or REVERSED via explicit refund events.
+    "COMPLETED": frozenset({"REFUNDED", "REVERSED"}),
+    # Strictly terminal states: NO outward transitions allowed under any circumstances.
+    "FAILED": frozenset(),
+    "CANCELLED": frozenset(),
+    "REFUNDED": frozenset(),
+    "REVERSED": frozenset(),
+}
 
 
 def _parse_event_datetime(raw: Optional[str]) -> Optional[datetime]:
@@ -251,11 +277,27 @@ async def receive_paypal_webhook(
     try:
         event = json.loads(raw_body)
     except Exception:
-        raise HTTPException(status_code=400, detail={"error": "INVALID_JSON"})
+        raise HTTPException(status_code=400, detail={"error": "INVALID_JSON", "message": "Webhook payload must be valid JSON."})
 
-    event_id   = event.get("id", "")
-    event_type = event.get("event_type", "")
-    resource = event.get("resource", {})
+    if not isinstance(event, dict):
+        raise HTTPException(status_code=400, detail={"error": "MALFORMED_EVENT", "message": "Webhook payload must be a JSON object."})
+
+    event_id = event.get("id")
+    if not event_id or not isinstance(event_id, str) or not event_id.strip():
+        logger.warning("Webhook rejected: missing or empty event id.")
+        raise HTTPException(status_code=400, detail={"error": "MISSING_EVENT_ID", "message": "Event payload must contain a non-empty string 'id'."})
+    event_id = event_id.strip()
+
+    event_type = event.get("event_type")
+    if not event_type or not isinstance(event_type, str) or not event_type.strip():
+        logger.warning("Webhook rejected: missing or empty event_type.")
+        raise HTTPException(status_code=400, detail={"error": "MISSING_EVENT_TYPE", "message": "Event payload must contain a non-empty string 'event_type'."})
+    event_type = event_type.strip()
+
+    resource = event.get("resource")
+    if not isinstance(resource, dict):
+        logger.warning("Webhook rejected: resource must be a JSON object.")
+        raise HTTPException(status_code=400, detail={"error": "MALFORMED_RESOURCE", "message": "Event 'resource' must be a JSON object."})
 
     now = datetime.now(timezone.utc)
     raw_event_time = (
@@ -342,7 +384,7 @@ async def receive_paypal_webhook(
     )
 
     # --- Process known event types ---
-    new_status, settlement_evidence = _EVENT_TYPE_MAP.get(event_type, (None, None))
+    new_status, settlement_evidence, is_refund_or_reversal = _EVENT_TYPE_MAP.get(event_type, (None, None, False))
 
     if new_status:
         payout_item_id = resource.get("payout_item_id") or resource.get("payout_item", {}).get("payout_item_id")
@@ -365,121 +407,310 @@ async def receive_paypal_webhook(
             )
 
         if instruction:
-            # Priority 2.0: Stale-event and Out-of-Order protection
-            # 1. Check duplicate terminal state:
-            if instruction.status in TERMINAL_STATUSES and instruction.status == new_status:
+            current_status = instruction.status
+
+            # Rule 1: Duplicate event for identical status
+            if current_status == new_status:
                 logger.info(
-                    "Duplicate terminal event ignored: instruction %s already in terminal status %s",
-                    instruction.id, instruction.status,
+                    "Duplicate status event ignored: instruction %s already in status %s",
+                    instruction.id, current_status,
                 )
-                webhook_record.status = "IGNORED_DUPLICATE_TERMINAL"
+                webhook_record.status = "IGNORED_DUPLICATE_TERMINAL" if current_status in TERMINAL_STATUSES else "DUPLICATE_IGNORED"
                 webhook_record.processed_at = now
                 db.commit()
                 return {
                     "status": "DUPLICATE_IGNORED",
                     "event_id": event_id,
                     "instruction_id": instruction.id,
-                    "reason": f"Instruction already in terminal status {instruction.status}",
+                    "reason": f"Instruction already in status {current_status}",
                 }
 
-            # 2. Check terminal state reversion attempt:
-            if instruction.status in TERMINAL_STATUSES and new_status not in ("FAILED", "RETURNED", "REFUNDED", "REVERSED", "COMPLETED"):
-                logger.info(
-                    "State precedence enforced: ignoring late non-terminal event %s for already %s instruction %s",
-                    event_type, instruction.status, instruction.id,
-                )
-                record_audit_event(
-                    db=db,
-                    entity_type="INSTRUCTION",
-                    entity_id=instruction.id,
-                    event_type="WEBHOOK_OUT_OF_ORDER_IGNORED",
-                    actor="PAYPAL_WEBHOOK",
-                    correlation_id=event_id_hash,
-                    details_redacted=json.dumps({
-                        "event_type": event_type,
-                        "current_status": instruction.status,
-                        "attempted_status": new_status,
-                        "reason": "Terminal status cannot be reverted by non-terminal event",
-                    }),
-                )
-                webhook_record.status = "IGNORED_STALE"
-                webhook_record.processed_at = now
-                db.commit()
-                return {
-                    "status": "OUT_OF_ORDER_IGNORED",
-                    "event_id": event_id,
-                    "instruction_id": instruction.id,
-                    "reason": "Terminal status cannot be reverted by non-terminal event",
-                }
-
-            # 3. Check conflicting terminal state:
-            if instruction.status == "COMPLETED" and new_status in ("FAILED", "BLOCKED", "DENIED"):
-                logger.warning(
-                    "Conflicting terminal update rejected: event %s attempted to transition COMPLETED instruction %s to %s",
-                    event_id, instruction.id, new_status,
-                )
-                record_audit_event(
-                    db=db,
-                    entity_type="INSTRUCTION",
-                    entity_id=instruction.id,
-                    event_type="WEBHOOK_CONFLICT_REJECTED",
-                    actor="PAYPAL_WEBHOOK",
-                    correlation_id=event_id_hash,
-                    details_redacted=json.dumps({
-                        "event_type": event_type,
-                        "current_status": instruction.status,
-                        "attempted_status": new_status,
-                        "reason": "Cannot transition COMPLETED instruction to FAILED without explicit refund/reversal",
-                    }),
-                )
-                webhook_record.status = "REJECTED_CONFLICT"
-                webhook_record.processed_at = now
-                db.commit()
-                return {
-                    "status": "CONFLICT_REJECTED",
-                    "event_id": event_id,
-                    "instruction_id": instruction.id,
-                    "error": "Conflicting terminal state update rejected",
-                }
-
-            # 4. Check timestamp-based staleness:
-            if instruction.last_event_time and parsed_event_time:
-                last_time = instruction.last_event_time
-                ev_time = parsed_event_time
-                if last_time.tzinfo is None and ev_time.tzinfo is not None:
-                    last_time = last_time.replace(tzinfo=timezone.utc)
-                elif last_time.tzinfo is not None and ev_time.tzinfo is None:
-                    ev_time = ev_time.replace(tzinfo=timezone.utc)
-
-                if ev_time < last_time:
-                    logger.info(
-                        "Stale webhook ignored: event %s timestamp %s is older than instruction last_event_time %s",
-                        event_id, ev_time.isoformat(), last_time.isoformat(),
+            # Rule 2: Strictly Terminal States (FAILED, CANCELLED, REFUNDED, REVERSED)
+            # These states have NO outward transitions permitted under any circumstances.
+            if current_status in ("FAILED", "CANCELLED", "REFUNDED", "REVERSED"):
+                if new_status == "COMPLETED":
+                    logger.warning(
+                        "Unauthorized terminal reversal rejected: event %s attempted to transition %s instruction %s to COMPLETED",
+                        event_id, current_status, instruction.id,
                     )
                     record_audit_event(
                         db=db,
                         entity_type="INSTRUCTION",
                         entity_id=instruction.id,
-                        event_type="WEBHOOK_STALE_EVENT_IGNORED",
+                        event_type="WEBHOOK_CONFLICT_REJECTED",
                         actor="PAYPAL_WEBHOOK",
                         correlation_id=event_id_hash,
                         details_redacted=json.dumps({
                             "event_type": event_type,
-                            "event_time": ev_time.isoformat(),
-                            "last_event_time": last_time.isoformat(),
-                            "current_status": instruction.status,
+                            "current_status": current_status,
                             "attempted_status": new_status,
+                            "reason": f"Unauthorized terminal reversal: {current_status} cannot be reversed to COMPLETED",
+                        }),
+                    )
+                    webhook_record.status = "REJECTED_CONFLICT"
+                    webhook_record.processed_at = now
+                    db.commit()
+                    return {
+                        "status": "CONFLICT_REJECTED",
+                        "event_id": event_id,
+                        "instruction_id": instruction.id,
+                        "error": f"Unauthorized terminal reversal: cannot transition {current_status} to COMPLETED",
+                    }
+                elif new_status in ("SUBMITTED", "UNKNOWN", "APPROVED"):
+                    logger.info(
+                        "State precedence enforced: ignoring late non-terminal event %s for %s instruction %s",
+                        event_type, current_status, instruction.id,
+                    )
+                    record_audit_event(
+                        db=db,
+                        entity_type="INSTRUCTION",
+                        entity_id=instruction.id,
+                        event_type="WEBHOOK_OUT_OF_ORDER_IGNORED",
+                        actor="PAYPAL_WEBHOOK",
+                        correlation_id=event_id_hash,
+                        details_redacted=json.dumps({
+                            "event_type": event_type,
+                            "current_status": current_status,
+                            "attempted_status": new_status,
+                            "reason": f"Terminal status {current_status} cannot be reverted by non-terminal event",
                         }),
                     )
                     webhook_record.status = "IGNORED_STALE"
                     webhook_record.processed_at = now
                     db.commit()
                     return {
-                        "status": "STALE_EVENT_IGNORED",
+                        "status": "OUT_OF_ORDER_IGNORED",
                         "event_id": event_id,
                         "instruction_id": instruction.id,
-                        "reason": f"Event time ({ev_time}) is older than last applied update ({last_time})",
+                        "reason": f"Terminal status {current_status} cannot be reverted by non-terminal event",
                     }
+                else:
+                    logger.warning(
+                        "Conflicting terminal status update rejected: %s instruction %s cannot transition to %s",
+                        current_status, instruction.id, new_status,
+                    )
+                    record_audit_event(
+                        db=db,
+                        entity_type="INSTRUCTION",
+                        entity_id=instruction.id,
+                        event_type="WEBHOOK_CONFLICT_REJECTED",
+                        actor="PAYPAL_WEBHOOK",
+                        correlation_id=event_id_hash,
+                        details_redacted=json.dumps({
+                            "event_type": event_type,
+                            "current_status": current_status,
+                            "attempted_status": new_status,
+                            "reason": f"Conflicting terminal transition: cannot change {current_status} to {new_status}",
+                        }),
+                    )
+                    webhook_record.status = "REJECTED_CONFLICT"
+                    webhook_record.processed_at = now
+                    db.commit()
+                    return {
+                        "status": "CONFLICT_REJECTED",
+                        "event_id": event_id,
+                        "instruction_id": instruction.id,
+                        "error": f"Conflicting terminal status update rejected: cannot change {current_status} to {new_status}",
+                    }
+
+            # Rule 3: COMPLETED State
+            # Can ONLY transition to REFUNDED or REVERSED via explicit refund/reversal events.
+            if current_status == "COMPLETED":
+                if is_refund_or_reversal and new_status in ("REFUNDED", "REVERSED"):
+                    # Legitimate refund/reversal path: require verified timestamp
+                    if not parsed_event_time:
+                        logger.warning(
+                            "Refund event rejected: unverified or missing timestamp for COMPLETED instruction %s",
+                            instruction.id,
+                        )
+                        record_audit_event(
+                            db=db,
+                            entity_type="INSTRUCTION",
+                            entity_id=instruction.id,
+                            event_type="WEBHOOK_UNVERIFIED_TIMESTAMP_IGNORED",
+                            actor="PAYPAL_WEBHOOK",
+                            correlation_id=event_id_hash,
+                            details_redacted=json.dumps({
+                                "event_type": event_type,
+                                "current_status": current_status,
+                                "attempted_status": new_status,
+                                "reason": "Missing or invalid event timestamp; cannot reverse settled payment without verified ordering",
+                            }),
+                        )
+                        webhook_record.status = "UNVERIFIED_TIMESTAMP_IGNORED"
+                        webhook_record.processed_at = now
+                        db.commit()
+                        return {
+                            "status": "UNVERIFIED_TIMESTAMP_IGNORED",
+                            "event_id": event_id,
+                            "instruction_id": instruction.id,
+                            "reason": "Missing or unverified timestamp cannot reverse settled payment",
+                        }
+
+                    # Check timestamp staleness against last_event_time
+                    if instruction.last_event_time:
+                        last_t = instruction.last_event_time
+                        ev_t = parsed_event_time
+                        if last_t.tzinfo is None:
+                            last_t = last_t.replace(tzinfo=timezone.utc)
+                        if ev_t.tzinfo is None:
+                            ev_t = ev_t.replace(tzinfo=timezone.utc)
+                        if ev_t < last_t:
+                            logger.info("Stale refund event ignored: timestamp older than last_event_time")
+                            record_audit_event(
+                                db=db,
+                                entity_type="INSTRUCTION",
+                                entity_id=instruction.id,
+                                event_type="WEBHOOK_STALE_EVENT_IGNORED",
+                                actor="PAYPAL_WEBHOOK",
+                                correlation_id=event_id_hash,
+                                details_redacted=json.dumps({
+                                    "event_type": event_type,
+                                    "current_status": current_status,
+                                    "attempted_status": new_status,
+                                }),
+                            )
+                            webhook_record.status = "IGNORED_STALE"
+                            webhook_record.processed_at = now
+                            db.commit()
+                            return {
+                                "status": "STALE_EVENT_IGNORED",
+                                "event_id": event_id,
+                                "instruction_id": instruction.id,
+                                "reason": "Refund event timestamp is older than last applied update",
+                            }
+
+                    # Valid forward refund/reversal: proceed to update
+                    logger.info("Applying legitimate refund/reversal event %s to COMPLETED instruction %s", event_type, instruction.id)
+                else:
+                    # Non-refund events cannot alter COMPLETED payments
+                    if new_status in ("FAILED", "BLOCKED", "DENIED"):
+                        logger.warning(
+                            "Conflicting terminal update rejected: event %s attempted to transition COMPLETED instruction %s to %s without refund",
+                            event_id, instruction.id, new_status,
+                        )
+                        record_audit_event(
+                            db=db,
+                            entity_type="INSTRUCTION",
+                            entity_id=instruction.id,
+                            event_type="WEBHOOK_CONFLICT_REJECTED",
+                            actor="PAYPAL_WEBHOOK",
+                            correlation_id=event_id_hash,
+                            details_redacted=json.dumps({
+                                "event_type": event_type,
+                                "current_status": current_status,
+                                "attempted_status": new_status,
+                                "reason": "Cannot transition COMPLETED instruction to FAILED without explicit refund/reversal event",
+                            }),
+                        )
+                        webhook_record.status = "REJECTED_CONFLICT"
+                        webhook_record.processed_at = now
+                        db.commit()
+                        return {
+                            "status": "CONFLICT_REJECTED",
+                            "event_id": event_id,
+                            "instruction_id": instruction.id,
+                            "error": "Conflicting terminal state update rejected",
+                        }
+                    else:
+                        logger.info(
+                            "State precedence enforced: ignoring late event %s for already COMPLETED instruction %s",
+                            event_type, instruction.id,
+                        )
+                        record_audit_event(
+                            db=db,
+                            entity_type="INSTRUCTION",
+                            entity_id=instruction.id,
+                            event_type="WEBHOOK_OUT_OF_ORDER_IGNORED",
+                            actor="PAYPAL_WEBHOOK",
+                            correlation_id=event_id_hash,
+                            details_redacted=json.dumps({
+                                "event_type": event_type,
+                                "current_status": current_status,
+                                "attempted_status": new_status,
+                                "reason": "Terminal status cannot be reverted by non-terminal event",
+                            }),
+                        )
+                        webhook_record.status = "IGNORED_STALE"
+                        webhook_record.processed_at = now
+                        db.commit()
+                        return {
+                            "status": "OUT_OF_ORDER_IGNORED",
+                            "event_id": event_id,
+                            "instruction_id": instruction.id,
+                            "reason": "Terminal status cannot be reverted by non-terminal event",
+                        }
+
+            # Rule 4: Non-Terminal States (CREATED, APPROVED, SUBMISSION_PENDING, SUBMITTED, UNKNOWN)
+            if current_status not in TERMINAL_STATUSES:
+                allowed_targets = ALLOWED_TRANSITIONS.get(current_status, frozenset())
+                if new_status not in allowed_targets:
+                    logger.warning(
+                        "Disallowed transition from %s to %s for instruction %s",
+                        current_status, new_status, instruction.id,
+                    )
+                    record_audit_event(
+                        db=db,
+                        entity_type="INSTRUCTION",
+                        entity_id=instruction.id,
+                        event_type="WEBHOOK_CONFLICT_REJECTED",
+                        actor="PAYPAL_WEBHOOK",
+                        correlation_id=event_id_hash,
+                        details_redacted=json.dumps({
+                            "event_type": event_type,
+                            "current_status": current_status,
+                            "attempted_status": new_status,
+                            "reason": f"Disallowed transition from {current_status} to {new_status}",
+                        }),
+                    )
+                    webhook_record.status = "REJECTED_CONFLICT"
+                    webhook_record.processed_at = now
+                    db.commit()
+                    return {
+                        "status": "CONFLICT_REJECTED",
+                        "event_id": event_id,
+                        "instruction_id": instruction.id,
+                        "error": f"Disallowed state transition from {current_status} to {new_status}",
+                    }
+
+                # Check timestamp ordering
+                if instruction.last_event_time and parsed_event_time:
+                    last_time = instruction.last_event_time
+                    ev_time = parsed_event_time
+                    if last_time.tzinfo is None and ev_time.tzinfo is not None:
+                        last_time = last_time.replace(tzinfo=timezone.utc)
+                    elif last_time.tzinfo is not None and ev_time.tzinfo is None:
+                        ev_time = ev_time.replace(tzinfo=timezone.utc)
+
+                    if ev_time < last_time:
+                        logger.info(
+                            "Stale webhook ignored: event %s timestamp %s is older than instruction last_event_time %s",
+                            event_id, ev_time.isoformat(), last_time.isoformat(),
+                        )
+                        record_audit_event(
+                            db=db,
+                            entity_type="INSTRUCTION",
+                            entity_id=instruction.id,
+                            event_type="WEBHOOK_STALE_EVENT_IGNORED",
+                            actor="PAYPAL_WEBHOOK",
+                            correlation_id=event_id_hash,
+                            details_redacted=json.dumps({
+                                "event_type": event_type,
+                                "event_time": ev_time.isoformat(),
+                                "last_event_time": last_time.isoformat(),
+                                "current_status": instruction.status,
+                                "attempted_status": new_status,
+                            }),
+                        )
+                        webhook_record.status = "IGNORED_STALE"
+                        webhook_record.processed_at = now
+                        db.commit()
+                        return {
+                            "status": "STALE_EVENT_IGNORED",
+                            "event_id": event_id,
+                            "instruction_id": instruction.id,
+                            "reason": f"Event time ({ev_time}) is older than last applied update ({last_time})",
+                        }
 
             # 5. Apply state transition
             instruction.status = new_status
@@ -516,8 +747,21 @@ async def receive_paypal_webhook(
                 )
                 total = len(all_instrs)
                 completed_count = sum(1 for i in all_instrs if i.status == "COMPLETED")
-                failed_count = sum(1 for i in all_instrs if i.status in ("FAILED", "RETURNED", "REFUNDED", "REVERSED"))
-                unresolved_count = sum(1 for i in all_instrs if i.status in ("UNKNOWN", "SUBMITTED", "PENDING", "APPROVED"))
+                failed_count = sum(1 for i in all_instrs if i.status in ("FAILED", "CANCELLED"))
+                refunded_count = sum(1 for i in all_instrs if i.status in ("REFUNDED", "REVERSED"))
+                unresolved_count = sum(1 for i in all_instrs if i.status in ("UNKNOWN", "SUBMITTED", "PENDING", "APPROVED", "SUBMISSION_PENDING", "CREATED"))
+
+                if unresolved_count == 0:
+                    if completed_count == total:
+                        batch.status = "COMPLETED"
+                    elif refunded_count == total:
+                        batch.status = "REVERSED"
+                    elif failed_count == total:
+                        batch.status = "FAILED"
+                    else:
+                        batch.status = "PARTIALLY_COMPLETED"
+                    # Remove ActiveBatchSubmission lock if batch has reached terminal state
+                    db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch.id).delete()
 
                 if total > 0:
                     if completed_count == total:

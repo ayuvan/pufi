@@ -118,14 +118,18 @@ class AuditVerificationResult:
 
     Attributes:
         is_valid: True if and only if all cryptographic links and row hashes match.
-        total_events_checked: Total number of chained AuditEvent rows inspected.
+        total_events_checked: Total number of chained AuditEvent rows inspected across all chains.
+        chains_checked: Total number of independent entity chains validated.
+        broken_entity_id: The specific entity UUID/ID where failure was detected.
         broken_event_id: The specific event UUID where a mismatch or broken link was detected.
         failure_reason: Concise, diagnostic explanation of what failed (tampering, deletion, reordering).
-        chain_head_hash: The event_hash of the latest event in the verified chain.
-        details: Extra diagnostic metadata (e.g. expected vs actual hash, timestamp).
+        chain_head_hash: The event_hash of the latest event in the verified chain (if single chain).
+        details: Extra diagnostic metadata (e.g. expected vs actual hash, timestamp, failed entities).
     """
     is_valid: bool
     total_events_checked: int
+    chains_checked: int = 1
+    broken_entity_id: Optional[str] = None
     broken_event_id: Optional[str] = None
     failure_reason: Optional[str] = None
     chain_head_hash: Optional[str] = None
@@ -135,26 +139,13 @@ class AuditVerificationResult:
         return asdict(self)
 
 
-def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVerificationResult:
+def _verify_single_entity_chain(db: Session, entity_id: str) -> AuditVerificationResult:
     """
-    Independently callable audit-chain verification function (Priority 2.0).
-
-    Verifies the relationship between every event and its predecessor, detecting:
-    - Modified event contents (payload tampering, unauthorized field edits).
-    - Broken hash links (missing, dropped, or deleted intermediate events).
-    - Out-of-order reordering or malicious insertions.
-
-    Architectural Limitations:
-    - Because the hash chain is stored entirely within the application database,
-      it is tamper-evident against local modifications, but CANNOT detect whole-database
-      rollback (restoring an earlier full DB backup) without external Merkle anchoring.
+    Verifies the cryptographic SHA-256 hash chain for a single, independent entity.
     """
-    query = db.query(AuditEvent).filter(AuditEvent.event_hash.isnot(None))
-    if entity_id:
-        query = query.filter(AuditEvent.entity_id == entity_id)
-
     events = (
-        query
+        db.query(AuditEvent)
+        .filter(AuditEvent.entity_id == entity_id, AuditEvent.event_hash.isnot(None))
         .order_by(AuditEvent.created_at.asc(), AuditEvent.id.asc())
         .all()
     )
@@ -163,8 +154,9 @@ def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVer
         return AuditVerificationResult(
             is_valid=True,
             total_events_checked=0,
+            chains_checked=1,
             chain_head_hash=GENESIS_HASH,
-            details={"scope": entity_id or "GLOBAL", "message": "No audit records found in scope."},
+            details={"scope": entity_id, "message": "No audit records found for entity."},
         )
 
     # Reorder events along the cryptographic chain if equal timestamps caused secondary sort ambiguity
@@ -188,13 +180,14 @@ def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVer
             if ev.prev_hash and ev.prev_hash != GENESIS_HASH:
                 return AuditVerificationResult(
                     is_valid=False,
-                    total_events_checked=idx + 1,
+                    total_events_checked=1,
+                    chains_checked=1,
+                    broken_entity_id=entity_id,
                     broken_event_id=ev.id,
-                    failure_reason=f"Genesis event has invalid prev_hash: expected {GENESIS_HASH}, got {ev.prev_hash}",
-                    details={"index": idx, "expected": GENESIS_HASH, "actual": ev.prev_hash},
+                    failure_reason=f"Genesis event for entity {entity_id} has invalid prev_hash: expected {GENESIS_HASH}, got {ev.prev_hash}",
+                    details={"entity_id": entity_id, "index": 0, "expected": GENESIS_HASH, "actual": ev.prev_hash},
                 )
             expected_prev = ev.event_hash or ""
-            # Recalculate hash
             if ev.event_hash:
                 recalculated = compute_event_hash(
                     prev_hash=ev.prev_hash or GENESIS_HASH,
@@ -208,10 +201,12 @@ def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVer
                 if recalculated != ev.event_hash:
                     return AuditVerificationResult(
                         is_valid=False,
-                        total_events_checked=idx + 1,
+                        total_events_checked=1,
+                        chains_checked=1,
+                        broken_entity_id=entity_id,
                         broken_event_id=ev.id,
-                        failure_reason=f"Tampered event data at id={ev.id}: hash mismatch",
-                        details={"index": idx, "expected_hash": ev.event_hash, "computed_hash": recalculated},
+                        failure_reason=f"Tampered event data at id={ev.id} in entity {entity_id}: hash mismatch",
+                        details={"entity_id": entity_id, "index": 0, "expected_hash": ev.event_hash, "computed_hash": recalculated},
                     )
             continue
 
@@ -220,12 +215,14 @@ def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVer
             return AuditVerificationResult(
                 is_valid=False,
                 total_events_checked=idx + 1,
+                chains_checked=1,
+                broken_entity_id=entity_id,
                 broken_event_id=ev.id,
                 failure_reason=(
-                    f"Broken hash chain at event id={ev.id}: prev_hash ({ev.prev_hash}) "
+                    f"Broken hash chain at event id={ev.id} in entity {entity_id}: prev_hash ({ev.prev_hash}) "
                     f"does not match predecessor ({expected_prev}). Intermediate deletion or reordering detected."
                 ),
-                details={"index": idx, "expected_prev": expected_prev, "actual_prev": ev.prev_hash},
+                details={"entity_id": entity_id, "index": idx, "expected_prev": expected_prev, "actual_prev": ev.prev_hash},
             )
 
         if ev.event_hash:
@@ -242,9 +239,11 @@ def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVer
                 return AuditVerificationResult(
                     is_valid=False,
                     total_events_checked=idx + 1,
+                    chains_checked=1,
+                    broken_entity_id=entity_id,
                     broken_event_id=ev.id,
-                    failure_reason=f"Tampered event data at id={ev.id}: hash mismatch",
-                    details={"index": idx, "expected_hash": ev.event_hash, "computed_hash": recalculated},
+                    failure_reason=f"Tampered event data at id={ev.id} in entity {entity_id}: hash mismatch",
+                    details={"entity_id": entity_id, "index": idx, "expected_hash": ev.event_hash, "computed_hash": recalculated},
                 )
 
         expected_prev = ev.event_hash or ""
@@ -252,12 +251,100 @@ def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVer
     return AuditVerificationResult(
         is_valid=True,
         total_events_checked=len(events),
+        chains_checked=1,
         chain_head_hash=events[-1].event_hash if events else GENESIS_HASH,
         details={
-            "scope": entity_id or "GLOBAL",
+            "scope": entity_id,
             "verified_at": datetime.now(timezone.utc).isoformat(),
             "first_event_id": events[0].id if events else None,
             "latest_event_id": events[-1].id if events else None,
+        },
+    )
+
+
+def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVerificationResult:
+    """
+    Independently callable audit-chain verification function (Priority 2.1).
+
+    Verifies the relationship between every event and its predecessor, detecting:
+    - Modified event contents (payload tampering, unauthorized field edits).
+    - Broken hash links (missing, dropped, or deleted intermediate events).
+    - Out-of-order reordering or malicious insertions.
+
+    Global Verification (entity_id=None):
+    - Independent entity chains are verified separately.
+    - Aggregates results across all distinct entities, identifying which entity and event failed.
+
+    Architectural Limitations:
+    - In-database hash chains are tamper-evident against unauthorized local record updates and
+      intermediate record deletions, but CANNOT detect tail truncation (dropping the most recent event)
+      without external Merkle/WORM head anchoring, nor whole-database restoration from a prior backup.
+    """
+    if entity_id:
+        return _verify_single_entity_chain(db, entity_id=entity_id)
+
+    # Global verification: validate independent entity chains separately
+    distinct_rows = (
+        db.query(AuditEvent.entity_id)
+        .filter(AuditEvent.event_hash.isnot(None))
+        .distinct()
+        .all()
+    )
+    entity_ids = [row[0] for row in distinct_rows if row[0]]
+
+    if not entity_ids:
+        return AuditVerificationResult(
+            is_valid=True,
+            total_events_checked=0,
+            chains_checked=0,
+            chain_head_hash=GENESIS_HASH,
+            details={"scope": "GLOBAL", "message": "No audit records found across any entity."},
+        )
+
+    total_events = 0
+    all_valid = True
+    first_failure: Optional[AuditVerificationResult] = None
+    failed_entities: list[Dict[str, Any]] = []
+
+    for eid in sorted(entity_ids):
+        res = _verify_single_entity_chain(db, entity_id=eid)
+        total_events += res.total_events_checked
+        if not res.is_valid:
+            all_valid = False
+            failed_entities.append({
+                "entity_id": eid,
+                "broken_event_id": res.broken_event_id,
+                "reason": res.failure_reason,
+            })
+            if first_failure is None:
+                first_failure = res
+
+    if not all_valid and first_failure:
+        return AuditVerificationResult(
+            is_valid=False,
+            total_events_checked=total_events,
+            chains_checked=len(entity_ids),
+            broken_entity_id=first_failure.broken_entity_id,
+            broken_event_id=first_failure.broken_event_id,
+            failure_reason=first_failure.failure_reason,
+            chain_head_hash=None,
+            details={
+                "scope": "GLOBAL",
+                "chains_checked": len(entity_ids),
+                "failed_chains_count": len(failed_entities),
+                "failed_entities": failed_entities,
+            },
+        )
+
+    return AuditVerificationResult(
+        is_valid=True,
+        total_events_checked=total_events,
+        chains_checked=len(entity_ids),
+        chain_head_hash=None,
+        details={
+            "scope": "GLOBAL",
+            "chains_checked": len(entity_ids),
+            "status": "All independent entity chains verified intact",
         },
     )
 

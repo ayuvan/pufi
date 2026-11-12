@@ -243,7 +243,7 @@ class PaymentBatch(Base):
         UniqueConstraint("business_id", "batch_reference", name="uq_batch_business_ref"),
         CheckConstraint(
             "status IN ('DRAFT','PENDING_APPROVAL','APPROVED','REJECTED',"
-            "'SUBMISSION_PENDING','SUBMITTED','UNKNOWN','COMPLETED','PARTIALLY_COMPLETED','FAILED','CANCELLED')",
+            "'SUBMISSION_PENDING','SUBMITTED','UNKNOWN','COMPLETED','PARTIALLY_COMPLETED','FAILED','CANCELLED','REVERSED')",
             name="ck_batch_status_valid",
         ),
     )
@@ -472,14 +472,15 @@ class PaymentInstruction(Base):
     __table_args__ = (
         CheckConstraint(
             "status IN ('CREATED','APPROVED','SUBMISSION_PENDING','SUBMITTED',"
-            "'UNKNOWN','COMPLETED','FAILED','CANCELLED')",
+            "'UNKNOWN','COMPLETED','FAILED','CANCELLED','REFUNDED','REVERSED')",
             name="ck_instruction_status_valid",
         ),
         CheckConstraint(
             "settlement_evidence IN ('NOT_APPLICABLE','NOT_CONFIRMED',"
             "'PROVIDER_REPORTED_COMPLETE','EXTERNAL_EVIDENCE_REQUIRED',"
             "'RECONCILED','EXCEPTION',"
-            "'SIMULATED_IMMEDIATE_SETTLEMENT','SIMULATED_PENDING_SETTLEMENT')",
+            "'SIMULATED_IMMEDIATE_SETTLEMENT','SIMULATED_PENDING_SETTLEMENT',"
+            "'FUNDS_RETURNED','FUNDS_REFUNDED','FUNDS_REVERSED')",
             name="ck_instruction_settlement_evidence_valid",
         ),
     )
@@ -663,6 +664,17 @@ class WebhookEvent(Base):
     __table_args__ = (
         UniqueConstraint("provider", "provider_event_id", name="uq_webhook_event_provider_id"),
         Index("ix_webhook_events_provider_event", "provider", "provider_event_id"),
+        CheckConstraint(
+            "status IN ('RECEIVED','PROCESSED','DUPLICATE_IGNORED','STALE_EVENT_IGNORED',"
+            "'OUT_OF_ORDER_IGNORED','CONFLICT_REJECTED','IGNORED_DUPLICATE_TERMINAL',"
+            "'IGNORED_STALE','REJECTED_CONFLICT','UNVERIFIED_TIMESTAMP_IGNORED',"
+            "'REJECTED_MALFORMED','FAILED')",
+            name="ck_webhook_event_status_valid",
+        ),
+        CheckConstraint(
+            "length(provider_event_id) > 0",
+            name="ck_webhook_event_id_nonempty",
+        ),
     )
 
     def __repr__(self) -> str:
