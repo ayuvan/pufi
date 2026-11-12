@@ -28,7 +28,7 @@ from models.entities import (
     PaymentBatch, PaymentInstruction, ProviderSubmission, Supplier,
 )
 from services.execution_coordinator import (
-    refresh_batch_status, submit_batch,
+    refresh_batch_status, submit_batch, recover_stranded_submission, resolve_unresolved_submission,
 )
 from services.paypal_adapter import PayPalBatchStatusResult, PayPalSubmitResult, PayoutItemStatus
 
@@ -468,3 +468,408 @@ class TestPhase3ReconciliationAndWebhooks:
             resp2 = client.post("/api/v1/webhooks/paypal", json=payload, headers=headers)
             assert resp2.status_code == 200
             assert resp2.json()["status"] == "DUPLICATE_IGNORED"
+
+
+# ===========================================================================
+# PRIORITY 1.1: Genuine Process-Crash & Concurrency Verification
+# ===========================================================================
+
+class TestPriority11CrashRecovery:
+    """
+    Priority 1.1 — Issue 1 & 2: Genuine Process-Crash Regression Tests.
+
+    Simulates the server process terminating immediately after Transaction 1 commits,
+    leaving a stranded PENDING submission and ActiveBatchSubmission lock.
+    Verifies that on application restart:
+      1. Original submission and sender_batch_id are preserved.
+      2. Recovery workflow transitions the stranded record to UNKNOWN.
+      3. No duplicate payout is generated.
+      4. Controlled manual reconciliation can resolve the record safely.
+    """
+
+    def test_genuine_process_crash_after_transaction_1_retains_intent_and_recovers_safely(self, db):
+        batch_id, ob_id = _create_approved_batch(db)
+        now = datetime.now(timezone.utc)
+        original_sender_batch_id = f"PUFI-{batch_id[:8]}-crash-test"
+
+        # 1. TRANSACTION 1: Persist submission intent, active lock, and batch status
+        sub = ProviderSubmission(
+            batch_id=batch_id,
+            provider_code="PAYPAL_SANDBOX",
+            sender_batch_id=original_sender_batch_id,
+            status="PENDING",
+            intended_amount=Decimal("1000.00"),
+            currency="USD",
+            item_count=1,
+            created_at=now,
+        )
+        db.add(sub)
+        db.flush()
+
+        active_lock = ActiveBatchSubmission(
+            batch_id=batch_id,
+            submission_id=sub.id,
+            created_at=now,
+        )
+        db.add(active_lock)
+
+        batch = db.query(PaymentBatch).filter(PaymentBatch.id == batch_id).first()
+        batch.status = "SUBMISSION_PENDING"
+
+        pi = PaymentInstruction(
+            batch_id=batch_id,
+            obligation_id=ob_id,
+            provider_code="PAYPAL_SANDBOX",
+            amount=Decimal("1000.00"),
+            currency="USD",
+            idempotency_key=f"PUFI-{batch_id[:8]}-{ob_id[-12:]}",
+            sender_item_id=f"PUFI-{batch_id[:8]}-{ob_id[-12:]}",
+            status="APPROVED",
+            settlement_evidence="NOT_CONFIRMED",
+        )
+        db.add(pi)
+        db.commit()
+
+        # 2. SIMULATE SUDDEN PROCESS CRASH: Close session and discard all in-memory context
+        sub_id = sub.id
+        db.close()
+
+        # 3. SIMULATE APPLICATION RESTART: Open a fresh database session
+        from tests.conftest import TestSessionLocal
+        fresh_db = TestSessionLocal()
+
+        try:
+            # Verify stranded on-disk state
+            reloaded_batch = fresh_db.query(PaymentBatch).filter(PaymentBatch.id == batch_id).first()
+            assert reloaded_batch.status == "SUBMISSION_PENDING"
+
+            reloaded_sub = fresh_db.query(ProviderSubmission).filter(ProviderSubmission.id == sub_id).first()
+            assert reloaded_sub.status == "PENDING"
+            assert reloaded_sub.paypal_payout_batch_id is None
+            assert reloaded_sub.sender_batch_id == original_sender_batch_id
+
+            # While stranded in PENDING/SUBMISSION_PENDING, any naive submit attempt must be BLOCKED
+            submit_attempt = submit_batch(batch_id, fresh_db)
+            assert submit_attempt.success is False
+            assert (
+                "only approved batches can be submitted" in submit_attempt.error_message.lower()
+                or "concurrent_submission_conflict" in submit_attempt.error_message.lower()
+                or "already has an active submission" in submit_attempt.error_message.lower()
+            )
+
+            # 4. RUN RECOVERY MECHANISM (triggered by status refresh or operator check)
+            refresh_res = refresh_batch_status(batch_id, fresh_db)
+            assert refresh_res.success is False
+            assert refresh_res.batch_status == "UNKNOWN"
+
+            # 5. VERIFY RECOVERY STATE
+            fresh_db.refresh(reloaded_sub)
+            fresh_db.refresh(reloaded_batch)
+            assert reloaded_sub.status == "UNKNOWN"
+            assert reloaded_sub.sender_batch_id == original_sender_batch_id  # Stable ID retained!
+            assert reloaded_batch.status == "UNKNOWN"
+
+            # ActiveBatchSubmission lock must be released
+            remaining_lock = fresh_db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch_id).first()
+            assert remaining_lock is None
+
+            # Submitting again must be BLOCKED because payment outcome is UNKNOWN
+            second_submit = submit_batch(batch_id, fresh_db)
+            assert second_submit.success is False
+            assert "PAYMENT_STATE_UNKNOWN" in second_submit.error_message
+
+            # Audit trail must record STRANDED_SUBMISSION_RECOVERED
+            ev = (
+                fresh_db.query(AuditEvent)
+                .filter(AuditEvent.entity_id == batch_id, AuditEvent.event_type == "STRANDED_SUBMISSION_RECOVERED")
+                .first()
+            )
+            assert ev is not None
+            details = json.loads(ev.details_redacted)
+            assert details["sender_batch_id"] == original_sender_batch_id
+            assert details["previous_status"] == "PENDING"
+            assert details["new_status"] == "UNKNOWN"
+
+        finally:
+            fresh_db.close()
+
+    def test_manual_resolution_never_sent(self, db):
+        """Controlled recovery when investigation proves payout never reached provider."""
+        batch_id, ob_id = _create_approved_batch(db)
+        now = datetime.now(timezone.utc)
+        sub = ProviderSubmission(
+            batch_id=batch_id,
+            provider_code="PAYPAL_SANDBOX",
+            sender_batch_id=f"PUFI-{batch_id[:8]}-unsent",
+            status="UNKNOWN",
+            created_at=now,
+        )
+        db.add(sub)
+        batch = db.query(PaymentBatch).filter(PaymentBatch.id == batch_id).first()
+        batch.status = "UNKNOWN"
+        db.commit()
+
+        # Operator investigates PayPal dashboard and confirms sender_batch_id does not exist
+        res = resolve_unresolved_submission(
+            batch_id=batch_id,
+            resolution="CONFIRM_NEVER_SENT",
+            db=db,
+            operator_id="OP-FINANCE-01",
+            notes="Verified with PayPal Sandbox dashboard: sender_batch_id not present.",
+        )
+        assert res.success is True
+        assert res.batch_status == "APPROVED"
+        assert sub.status == "FAILED"
+        assert "MANUALLY_RESOLVED_NEVER_SENT" in sub.error_message
+        assert batch.status == "APPROVED"
+
+        # Audit event recorded
+        ev = db.query(AuditEvent).filter(AuditEvent.entity_id == batch_id, AuditEvent.event_type == "MANUAL_RECONCILIATION_RESOLVED").first()
+        assert ev is not None
+        assert ev.actor == "OP-FINANCE-01"
+
+    def test_manual_resolution_confirmed_submitted(self, db):
+        """Controlled recovery when operator discovers provider payout batch ID."""
+        batch_id, ob_id = _create_approved_batch(db)
+        now = datetime.now(timezone.utc)
+        sub = ProviderSubmission(
+            batch_id=batch_id,
+            provider_code="PAYPAL_SANDBOX",
+            sender_batch_id=f"PUFI-{batch_id[:8]}-found",
+            status="UNKNOWN",
+            created_at=now,
+        )
+        db.add(sub)
+        batch = db.query(PaymentBatch).filter(PaymentBatch.id == batch_id).first()
+        batch.status = "UNKNOWN"
+        pi = PaymentInstruction(
+            batch_id=batch_id,
+            obligation_id=ob_id,
+            provider_code="PAYPAL_SANDBOX",
+            amount=Decimal("1000.00"),
+            currency="USD",
+            idempotency_key=f"PUFI-RES-{batch_id[:8]}",
+            sender_item_id=f"PUFI-RES-{batch_id[:8]}",
+            status="UNKNOWN",
+            settlement_evidence="NOT_CONFIRMED",
+        )
+        db.add(pi)
+        db.commit()
+
+        mock_status = PayPalBatchStatusResult(
+            success=True,
+            paypal_payout_batch_id="5CG123456789",
+            paypal_batch_status="SUCCESS",
+            items=[
+                PayoutItemStatus(
+                    sender_item_id=f"PUFI-RES-{batch_id[:8]}",
+                    payout_item_id="PI-999",
+                    transaction_id="TX-999",
+                    item_status="SUCCESS",
+                    error_message=None,
+                )
+            ],
+        )
+
+        with patch("services.execution_coordinator.get_batch_status", return_value=mock_status):
+            res = resolve_unresolved_submission(
+                batch_id=batch_id,
+                resolution="CONFIRM_SUBMITTED",
+                confirmed_payout_batch_id="5CG123456789",
+                db=db,
+                operator_id="OP-FINANCE-02",
+                notes="Found payout_batch_id in PayPal merchant portal.",
+            )
+
+        assert res.success is True
+        assert res.batch_status == "COMPLETED"
+        assert sub.status == "SUBMITTED"
+        assert sub.paypal_payout_batch_id == "5CG123456789"
+        assert pi.status == "COMPLETED"
+
+
+class TestPriority11GenuineConcurrency:
+    """
+    Priority 1.1 — Issue 3: Genuine Multi-Threaded Concurrency Regression Tests.
+
+    Uses a multi-connection test database and independent threads to prove:
+      1. Two concurrent submission requests targeting the same batch result in exactly one payout.
+      2. The losing thread receives a clear 409 CONCURRENT_SUBMISSION_CONFLICT error.
+      3. Provider adapter is called at most once.
+      4. Independent batches can submit concurrently without blocking each other.
+    """
+
+    def test_genuine_concurrent_requests_two_threads_independent_sessions(self):
+        import tempfile
+        import threading
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from models.db import Base
+
+        temp_db = tempfile.mktemp(suffix=".db")
+        engine = create_engine(f"sqlite:///{temp_db}", connect_args={"timeout": 15})
+        Base.metadata.create_all(bind=engine)
+        SessionFactory = sessionmaker(bind=engine)
+
+        setup_db = SessionFactory()
+        biz = Business(id="BIZ-CONC-1", display_name="Conc Corp")
+        setup_db.add(biz)
+        sup = Supplier(
+            id="SUP-CONC-1", business_id="BIZ-CONC-1", external_reference="EXT-C1",
+            display_name="Conc Sup", country_code="US", recipient_reference_type="EMAIL",
+            recipient_reference_masked="c***@example.com", sandbox_recipient_email="conc@paypal.com",
+            preferred_currency="USD",
+        )
+        setup_db.add(sup)
+        ob = Obligation(
+            id="OBL-CONC-1", business_id="BIZ-CONC-1", supplier_id="SUP-CONC-1",
+            invoice_reference="INV-C1", amount=Decimal("500.00"), currency="USD",
+            due_at=date(2026, 12, 31), status="VALIDATED", source_hash="hashc1",
+        )
+        setup_db.add(ob)
+        batch = PaymentBatch(
+            id="BATCH-CONC-1", business_id="BIZ-CONC-1", batch_reference="REF-C1",
+            status="APPROVED", selected_provider_code="PAYPAL_SANDBOX",
+        )
+        setup_db.add(batch)
+        setup_db.add(BatchObligation(batch_id="BATCH-CONC-1", obligation_id="OBL-CONC-1"))
+        setup_db.commit()
+        setup_db.close()
+
+        results = []
+        barrier = threading.Barrier(2)
+        mock_submit = MagicMock(return_value=PayPalSubmitResult(
+            success=True,
+            sender_batch_id="s-conc-1",
+            paypal_payout_batch_id="PP-CONC-1",
+            paypal_batch_status="SUCCESS",
+            http_status=201,
+        ))
+
+        def worker():
+            thread_db = SessionFactory()
+            barrier.wait()  # Synchronize both threads to hit submit_batch at the exact same moment
+            with patch("services.execution_coordinator.submit_payout", mock_submit):
+                res = submit_batch("BATCH-CONC-1", thread_db)
+            results.append(res)
+            thread_db.close()
+
+        t1 = threading.Thread(target=worker)
+        t2 = threading.Thread(target=worker)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        try:
+            assert len(results) == 2
+            successes = [r for r in results if r.success]
+            failures = [r for r in results if not r.success]
+
+            # Exactly one request must succeed, and exactly one must fail with conflict
+            assert len(successes) == 1
+            assert len(failures) == 1
+            assert "CONCURRENT_SUBMISSION_CONFLICT" in failures[0].error_message
+
+            # Provider adapter called at most once
+            assert mock_submit.call_count == 1
+
+            # Database has exactly ONE committed submission intent
+            verify_db = SessionFactory()
+            subs = verify_db.query(ProviderSubmission).filter_by(batch_id="BATCH-CONC-1").all()
+            assert len(subs) == 1
+            verify_db.close()
+
+        finally:
+            try:
+                os.remove(temp_db)
+            except Exception:
+                pass
+
+    def test_genuine_concurrent_requests_different_batches_succeed(self):
+        import tempfile
+        import threading
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from models.db import Base
+
+        temp_db = tempfile.mktemp(suffix=".db")
+        engine = create_engine(f"sqlite:///{temp_db}", connect_args={"timeout": 15})
+        Base.metadata.create_all(bind=engine)
+        SessionFactory = sessionmaker(bind=engine)
+
+        setup_db = SessionFactory()
+        biz = Business(id="BIZ-MULTI-1", display_name="Multi Corp")
+        setup_db.add(biz)
+        sup = Supplier(
+            id="SUP-MULTI-1", business_id="BIZ-MULTI-1", external_reference="EXT-M1",
+            display_name="Multi Sup", country_code="US", recipient_reference_type="EMAIL",
+            recipient_reference_masked="m***@example.com", sandbox_recipient_email="multi@paypal.com",
+            preferred_currency="USD",
+        )
+        setup_db.add(sup)
+        ob1 = Obligation(
+            id="OBL-M1", business_id="BIZ-MULTI-1", supplier_id="SUP-MULTI-1",
+            invoice_reference="INV-M1", amount=Decimal("100.00"), currency="USD",
+            due_at=date(2026, 12, 31), status="VALIDATED", source_hash="hm1",
+        )
+        ob2 = Obligation(
+            id="OBL-M2", business_id="BIZ-MULTI-1", supplier_id="SUP-MULTI-1",
+            invoice_reference="INV-M2", amount=Decimal("200.00"), currency="USD",
+            due_at=date(2026, 12, 31), status="VALIDATED", source_hash="hm2",
+        )
+        setup_db.add_all([ob1, ob2])
+        b1 = PaymentBatch(
+            id="BATCH-DIFF-1", business_id="BIZ-MULTI-1", batch_reference="REF-M1",
+            status="APPROVED", selected_provider_code="PAYPAL_SANDBOX",
+        )
+        b2 = PaymentBatch(
+            id="BATCH-DIFF-2", business_id="BIZ-MULTI-1", batch_reference="REF-M2",
+            status="APPROVED", selected_provider_code="PAYPAL_SANDBOX",
+        )
+        setup_db.add_all([b1, b2])
+        setup_db.add(BatchObligation(batch_id="BATCH-DIFF-1", obligation_id="OBL-M1"))
+        setup_db.add(BatchObligation(batch_id="BATCH-DIFF-2", obligation_id="OBL-M2"))
+        setup_db.commit()
+        setup_db.close()
+
+        results = []
+        barrier = threading.Barrier(2)
+
+        def worker(b_id):
+            thread_db = SessionFactory()
+            barrier.wait()
+            with patch("services.execution_coordinator.submit_payout", return_value=PayPalSubmitResult(
+                success=True,
+                sender_batch_id=f"s-{b_id}",
+                paypal_payout_batch_id=f"PP-{b_id}",
+                paypal_batch_status="SUCCESS",
+                http_status=201,
+            )):
+                res = submit_batch(b_id, thread_db)
+            results.append(res)
+            thread_db.close()
+
+        t1 = threading.Thread(target=worker, args=("BATCH-DIFF-1",))
+        t2 = threading.Thread(target=worker, args=("BATCH-DIFF-2",))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        try:
+            assert len(results) == 2
+            successes = [r for r in results if r.success]
+            assert len(successes) == 2
+
+            verify_db = SessionFactory()
+            subs = verify_db.query(ProviderSubmission).all()
+            assert len(subs) == 2
+            verify_db.close()
+
+        finally:
+            try:
+                os.remove(temp_db)
+            except Exception:
+                pass
+

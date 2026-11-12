@@ -1,5 +1,17 @@
 """
-PUFI — PayPal Sandbox adapter (Day 4).
+PUFI — PayPal Sandbox adapter (Day 4 & Priority 1.1 Remediation).
+
+IDEMPOTENCY ARCHITECTURE & IDENTIFIERS:
+  1. PayPal sender_batch_id (Payload-level Idempotency):
+     - Placed inside the JSON payload under `sender_batch_header.sender_batch_id`.
+     - PayPal Payouts v1 API guarantees 30-day deduplication on this exact string.
+     - Crucial: PayPal Payouts v1 does NOT support or accept a 'PayPal-Request-Id'
+       HTTP header (which is used in PayPal v2 Orders/Payments APIs). No HTTP
+       idempotency header is sent.
+  2. PUFI instruction idempotency_key (Internal Database Key):
+     - Formatted as `PUFI-{batch_id[:8]}-{obligation_id[-12:]}`.
+     - Stored on `PaymentInstruction.idempotency_key` with a database UNIQUE constraint.
+     - Also assigned to `PayoutItem.sender_item_id` to correlate item outcomes.
 
 SECURITY RULES:
   - PAYPAL_MODE must be "sandbox" — no production mode is accepted.
@@ -403,6 +415,31 @@ def get_batch_status(paypal_payout_batch_id: str) -> PayPalBatchStatusResult:
         paypal_batch_status=batch_status,
         items=items,
     )
+
+
+def query_payout_by_sender_batch_id(sender_batch_id: str) -> Optional[PayPalBatchStatusResult]:
+    """
+    Attempt to query the PayPal provider using solely the client's sender_batch_id.
+
+    INVESTIGATION FINDING (Priority 1.1 — Issue 1 & 4):
+      - PayPal Payouts v1 REST API does NOT provide an endpoint to lookup or query
+        batches by sender_batch_id (only `GET /v1/payments/payouts/{payout_batch_id}` is supported).
+      - If a client resubmits a POST request with the same sender_batch_id, PayPal
+        returns HTTP 400 DUPLICATE_REQUEST with a HATEOAS link to the batch.
+      - FINANCIAL SAFETY MANDATE: PUFI does NOT perform an active POST probe against
+        PayPal using sender_batch_id during automated recovery. If the application crashed
+        BEFORE the initial HTTP request left the process, an automated POST probe would
+        execute an intended payout rather than querying read-only status!
+      - Therefore, this function returns None when only sender_batch_id is known.
+        PUFI preserves the uncertainty, marks the record UNKNOWN, and mandates human
+        investigation or webhook correlation before any further action is permitted.
+    """
+    logger.warning(
+        "PayPal Payouts REST API v1 does not support read-only query by sender_batch_id (%r). "
+        "Automated POST probe is prohibited for financial safety. Preserving UNKNOWN state.",
+        sender_batch_id,
+    )
+    return None
 
 
 # ---------------------------------------------------------------------------

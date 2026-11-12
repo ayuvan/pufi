@@ -38,7 +38,7 @@ from models.entities import (
 from services.audit import record_audit_event
 from services.paypal_adapter import (
     PayoutItem, PayPalBatchStatusResult, is_configured,
-    submit_payout, get_batch_status,
+    submit_payout, get_batch_status, query_payout_by_sender_batch_id,
 )
 from services.simulated_adapter import submit_simulated_payout, SimulatedPayoutResult
 
@@ -320,7 +320,23 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
             db.add(instr)
             instructions.append(instr)
 
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        return SubmissionResult(
+            success=False,
+            batch_id=batch_id,
+            sender_batch_id="",
+            paypal_payout_batch_id=None,
+            paypal_batch_status=None,
+            submission_status="FAILED",
+            submitted_at=now.isoformat(),
+            is_simulated=not is_configured(),
+            paypal_configured=is_configured(),
+            error_message="CONCURRENT_SUBMISSION_CONFLICT: A submission is currently in progress for this batch.",
+            disclaimer=_disclaimer(),
+        )
 
     # --- 5. Generate stable sender_batch_id & Validate Recipients ---
     sender_batch_id = f"PUFI-{batch_id[:8]}-{uuid.uuid4().hex[:8]}"
@@ -361,46 +377,47 @@ def submit_batch(batch_id: str, db: Session, correlation_id: Optional[str] = Non
         ))
 
     # --- 6. TRANSACTION 1: Persist Durable Submission Intent & Active Lock (Phase 1 & 2) ---
-    submission = ProviderSubmission(
-        batch_id=batch_id,
-        provider_code=provider_code,
-        sender_batch_id=sender_batch_id,
-        status="PENDING",
-        intended_amount=total_intended_amount,
-        currency=primary_currency,
-        item_count=len(payout_items),
-        created_at=now,
-    )
-    db.add(submission)
-    db.flush()  # populate submission.id
-
-    submission_id = submission.id
-    active_submission = ActiveBatchSubmission(
-        batch_id=batch_id,
-        submission_id=submission_id,
-        created_at=now,
-    )
-    db.add(active_submission)
-    batch.status = "SUBMISSION_PENDING"
-
-    record_audit_event(
-        db=db,
-        entity_type="BATCH",
-        entity_id=batch_id,
-        event_type="SUBMISSION_INTENT_COMMITTED",
-        actor="SYSTEM",
-        correlation_id=correlation_id,
-        details_redacted=json.dumps({
-            "submission_id": submission_id,
-            "sender_batch_id": sender_batch_id,
-            "provider_code": provider_code,
-            "intended_amount": str(total_intended_amount),
-            "currency": primary_currency,
-            "item_count": len(payout_items),
-        }),
-    )
-
     try:
+        submission = ProviderSubmission(
+            batch_id=batch_id,
+            provider_code=provider_code,
+            sender_batch_id=sender_batch_id,
+            status="PENDING",
+            intended_amount=total_intended_amount,
+            currency=primary_currency,
+            item_count=len(payout_items),
+            created_at=now,
+        )
+        db.add(submission)
+        db.flush()  # populate submission.id
+
+        submission_id = submission.id
+        active_submission = ActiveBatchSubmission(
+            batch_id=batch_id,
+            submission_id=submission_id,
+            created_at=now,
+        )
+        db.add(active_submission)
+        batch.status = "SUBMISSION_PENDING"
+        db.flush()  # Immediately enforce PRIMARY KEY uniqueness constraint!
+
+        record_audit_event(
+            db=db,
+            entity_type="BATCH",
+            entity_id=batch_id,
+            event_type="SUBMISSION_INTENT_COMMITTED",
+            actor="SYSTEM",
+            correlation_id=correlation_id,
+            details_redacted=json.dumps({
+                "submission_id": submission_id,
+                "sender_batch_id": sender_batch_id,
+                "provider_code": provider_code,
+                "intended_amount": str(total_intended_amount),
+                "currency": primary_currency,
+                "item_count": len(payout_items),
+            }),
+        )
+
         db.commit()  # TRANSACTION 1 COMMITTED TO DISK BEFORE CALLING EXTERNAL API!
     except IntegrityError:
         db.rollback()
@@ -741,6 +758,10 @@ def refresh_batch_status(
         )
 
     if submission is None or not submission.paypal_payout_batch_id:
+        # Priority 1.1 — Issue 1: Stranded PENDING submission recovery after process crash
+        if submission and submission.status == "PENDING":
+            return recover_stranded_submission(batch_id=batch_id, db=db, correlation_id=correlation_id)
+
         # Case B: Missing provider payout batch ID — payment remains UNKNOWN
         if submission and submission.status == "UNKNOWN":
             record_audit_event(
@@ -903,6 +924,276 @@ def reconcile_unknown_submission(
         details_redacted=json.dumps({"action": "reconcile_unknown_submission"}),
     )
     return refresh_batch_status(batch_id=batch_id, db=db, correlation_id=correlation_id)
+
+
+def recover_stranded_submission(
+    batch_id: str,
+    db: Session,
+    correlation_id: Optional[str] = None,
+) -> StatusRefreshResult:
+    """
+    Recover stranded PENDING submissions after process crash/termination (Priority 1.1 — Issue 1).
+
+    Orchestrates safe recovery for a batch where Transaction 1 committed a ProviderSubmission
+    with status PENDING and ActiveBatchSubmission, but the process terminated before Transaction 2.
+
+    Rules:
+      1. Uses persisted sender_batch_id as the original provider correlation identifier.
+      2. Never generates a new sender_batch_id merely because the response was lost.
+      3. Never blindly re-submits the payout (financial safety: could double-pay if original reached provider).
+      4. Inquires with provider adapter to determine if outcome can be established.
+      5. If provider cannot confirm (PayPal lacks read-only query by sender_batch_id):
+         - Preserves submission record, timestamps, and original sender_batch_id.
+         - Transitions ProviderSubmission.status to UNKNOWN.
+         - Transitions PaymentBatch.status to UNKNOWN.
+         - Transitions all PaymentInstruction records to UNKNOWN.
+         - Cleans up ActiveBatchSubmission lock (so batch is not locked in crash state).
+         - Records hash-chained STRANDED_SUBMISSION_RECOVERED audit event.
+         - Database commit ensures recovery state is persistent.
+    """
+    now = datetime.now(timezone.utc)
+
+    batch = db.query(PaymentBatch).filter(PaymentBatch.id == batch_id).first()
+    if not batch:
+        return StatusRefreshResult(
+            success=False, batch_id=batch_id, batch_status="UNKNOWN",
+            paypal_batch_status=None, items_checked=0, completed=0,
+            failed=0, pending=0, unknown=0, refreshed_at=now.isoformat(),
+            error_message=f"Batch {batch_id!r} not found.", disclaimer=_disclaimer(),
+        )
+
+    submission = (
+        db.query(ProviderSubmission)
+        .filter(
+            ProviderSubmission.batch_id == batch_id,
+            ProviderSubmission.status == "PENDING",
+        )
+        .order_by(ProviderSubmission.created_at.desc())
+        .first()
+    )
+    if not submission:
+        # Check if there is already an UNKNOWN or SUBMITTED submission
+        return refresh_batch_status(batch_id=batch_id, db=db, correlation_id=correlation_id)
+
+    original_sender_batch_id = submission.sender_batch_id
+    provider_code = submission.provider_code
+
+    # 1. Investigate whether provider can establish outcome using supported functionality
+    provider_result = None
+    if provider_code == "PAYPAL_SANDBOX":
+        provider_result = query_payout_by_sender_batch_id(original_sender_batch_id)
+
+    if provider_result is not None and provider_result.success and provider_result.paypal_payout_batch_id:
+        # Provider established outcome! Record and update
+        submission.status = "SUBMITTED"
+        submission.paypal_payout_batch_id = provider_result.paypal_payout_batch_id
+        submission.paypal_batch_status = provider_result.paypal_batch_status
+        submission.response_at = now
+        active_sub = db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch_id).first()
+        if active_sub:
+            db.delete(active_sub)
+        db.commit()
+        return refresh_batch_status(batch_id=batch_id, db=db, correlation_id=correlation_id)
+
+    # 2. Outcome cannot be established: preserve uncertainty, transition to UNKNOWN
+    err_msg = (
+        f"STRANDED_PENDING_RECOVERED: Process crashed while submission was PENDING. "
+        f"Provider {provider_code} cannot confirm receipt using sender_batch_id={original_sender_batch_id!r}. "
+        "Outcome is uncertain. Preserved original submission in UNKNOWN state pending manual reconciliation."
+    )
+    submission.status = "UNKNOWN"
+    submission.error_message = err_msg
+    submission.response_at = now
+
+    batch.status = "UNKNOWN"
+
+    instructions = db.query(PaymentInstruction).filter(PaymentInstruction.batch_id == batch_id).all()
+    for instr in instructions:
+        instr.status = "UNKNOWN"
+        instr.updated_at = now
+
+    # Remove active lock so system is not stuck in a crashed lock, while UNKNOWN status blocks resubmission
+    active_sub = db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch_id).first()
+    if active_sub:
+        db.delete(active_sub)
+
+    # Record hash-chained audit event
+    record_audit_event(
+        db=db,
+        entity_type="BATCH",
+        entity_id=batch_id,
+        event_type="STRANDED_SUBMISSION_RECOVERED",
+        actor="SYSTEM",
+        correlation_id=correlation_id,
+        details_redacted=json.dumps({
+            "batch_id": batch_id,
+            "submission_id": submission.id,
+            "sender_batch_id": original_sender_batch_id,
+            "provider_code": provider_code,
+            "previous_status": "PENDING",
+            "new_status": "UNKNOWN",
+            "reason": "Process crash detected before Transaction 2 completed",
+        }),
+    )
+    db.commit()
+
+    return StatusRefreshResult(
+        success=False,
+        batch_id=batch_id,
+        batch_status="UNKNOWN",
+        paypal_batch_status=None,
+        items_checked=len(instructions),
+        completed=0,
+        failed=0,
+        pending=0,
+        unknown=len(instructions),
+        refreshed_at=now.isoformat(),
+        error_message=err_msg,
+        disclaimer=_disclaimer(),
+    )
+
+
+def resolve_unresolved_submission(
+    batch_id: str,
+    resolution: str,
+    db: Session,
+    confirmed_payout_batch_id: Optional[str] = None,
+    operator_id: str = "FINANCE_OPERATOR",
+    notes: Optional[str] = None,
+    correlation_id: Optional[str] = None,
+) -> StatusRefreshResult:
+    """
+    Documented, controlled method for handling a submission that was committed but
+    whose outcome required manual human investigation (Priority 1.1 — Issue 1, Requirement 9).
+
+    Supported resolutions:
+      - 'CONFIRM_NEVER_SENT':
+          Operator verified via provider dashboard / direct bank logs that PayPal / provider
+          never received the payout request. Marks the stranded submission as FAILED (with note),
+          resets batch to 'APPROVED' (or instructions to 'APPROVED') so it can be safely re-evaluated
+          or re-submitted under human supervision.
+      - 'CONFIRM_SUBMITTED':
+          Operator verified via provider dashboard that the payout WAS accepted, and provides
+          confirmed_payout_batch_id. Links the provider ID, marks submission 'SUBMITTED', and
+          refreshes status from provider.
+    """
+    now = datetime.now(timezone.utc)
+    batch = db.query(PaymentBatch).filter(PaymentBatch.id == batch_id).first()
+    if not batch:
+        return StatusRefreshResult(
+            success=False, batch_id=batch_id, batch_status="UNKNOWN",
+            paypal_batch_status=None, items_checked=0, completed=0,
+            failed=0, pending=0, unknown=0, refreshed_at=now.isoformat(),
+            error_message=f"Batch {batch_id!r} not found.", disclaimer=_disclaimer(),
+        )
+
+    submission = (
+        db.query(ProviderSubmission)
+        .filter(ProviderSubmission.batch_id == batch_id)
+        .order_by(ProviderSubmission.created_at.desc())
+        .first()
+    )
+    if not submission:
+        return StatusRefreshResult(
+            success=False, batch_id=batch_id, batch_status=batch.status,
+            paypal_batch_status=None, items_checked=0, completed=0,
+            failed=0, pending=0, unknown=0, refreshed_at=now.isoformat(),
+            error_message="No submission record found for batch.", disclaimer=_disclaimer(),
+        )
+
+    if resolution == "CONFIRM_NEVER_SENT":
+        submission.status = "FAILED"
+        submission.error_message = (
+            f"MANUALLY_RESOLVED_NEVER_SENT by {operator_id}: "
+            f"{notes or 'Confirmed provider never received payout.'}"
+        )
+        submission.response_at = now
+        batch.status = "APPROVED"
+        instructions = db.query(PaymentInstruction).filter(PaymentInstruction.batch_id == batch_id).all()
+        for instr in instructions:
+            instr.status = "APPROVED"
+            instr.updated_at = now
+
+        active_sub = db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch_id).first()
+        if active_sub:
+            db.delete(active_sub)
+
+        record_audit_event(
+            db=db,
+            entity_type="BATCH",
+            entity_id=batch_id,
+            event_type="MANUAL_RECONCILIATION_RESOLVED",
+            actor=operator_id,
+            correlation_id=correlation_id,
+            details_redacted=json.dumps({
+                "resolution": "CONFIRM_NEVER_SENT",
+                "operator_id": operator_id,
+                "notes": notes,
+                "batch_id": batch_id,
+                "sender_batch_id": submission.sender_batch_id,
+            }),
+        )
+        db.commit()
+
+        return StatusRefreshResult(
+            success=True,
+            batch_id=batch_id,
+            batch_status="APPROVED",
+            paypal_batch_status=None,
+            items_checked=len(instructions),
+            completed=0,
+            failed=0,
+            pending=0,
+            unknown=0,
+            refreshed_at=now.isoformat(),
+            error_message=None,
+            disclaimer=_disclaimer(),
+        )
+
+    elif resolution == "CONFIRM_SUBMITTED":
+        if not confirmed_payout_batch_id:
+            return StatusRefreshResult(
+                success=False, batch_id=batch_id, batch_status=batch.status,
+                paypal_batch_status=None, items_checked=0, completed=0,
+                failed=0, pending=0, unknown=0, refreshed_at=now.isoformat(),
+                error_message="confirmed_payout_batch_id is required for CONFIRM_SUBMITTED resolution.",
+                disclaimer=_disclaimer(),
+            )
+        submission.paypal_payout_batch_id = confirmed_payout_batch_id
+        submission.status = "SUBMITTED"
+        submission.response_at = now
+
+        active_sub = db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch_id).first()
+        if active_sub:
+            db.delete(active_sub)
+
+        record_audit_event(
+            db=db,
+            entity_type="BATCH",
+            entity_id=batch_id,
+            event_type="MANUAL_RECONCILIATION_RESOLVED",
+            actor=operator_id,
+            correlation_id=correlation_id,
+            details_redacted=json.dumps({
+                "resolution": "CONFIRM_SUBMITTED",
+                "operator_id": operator_id,
+                "confirmed_payout_batch_id": confirmed_payout_batch_id,
+                "notes": notes,
+                "sender_batch_id": submission.sender_batch_id,
+            }),
+        )
+        db.commit()
+
+        return refresh_batch_status(batch_id=batch_id, db=db, correlation_id=correlation_id)
+
+    else:
+        return StatusRefreshResult(
+            success=False, batch_id=batch_id, batch_status=batch.status,
+            paypal_batch_status=None, items_checked=0, completed=0,
+            failed=0, pending=0, unknown=0, refreshed_at=now.isoformat(),
+            error_message=f"Invalid resolution code: {resolution!r}. Allowed: CONFIRM_NEVER_SENT, CONFIRM_SUBMITTED",
+            disclaimer=_disclaimer(),
+        )
 
 
 def _disclaimer() -> str:
