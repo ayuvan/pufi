@@ -133,14 +133,15 @@ export default function ImportPage() {
           </span>
         }
         actions={
-          <div style={{ display: 'flex', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button
               onClick={() => setShowZapierGuide(!showZapierGuide)}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 6,
-                padding: '8px 14px',
+                height: 38,
+                padding: '0 14px',
                 borderRadius: 'var(--radius-md)',
                 background: 'var(--bg-surface)',
                 border: '1px solid var(--border-base)',
@@ -148,6 +149,8 @@ export default function ImportPage() {
                 fontWeight: 650,
                 color: 'var(--text-primary)',
                 cursor: 'pointer',
+                boxSizing: 'border-box',
+                lineHeight: '36px',
               }}
             >
               <Zap size={15} color="#FF4A00" />
@@ -159,7 +162,8 @@ export default function ImportPage() {
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 6,
-                padding: '8px 14px',
+                height: 38,
+                padding: '0 14px',
                 borderRadius: 'var(--radius-md)',
                 background: 'var(--bg-subtle)',
                 border: '1px solid var(--border-subtle)',
@@ -167,6 +171,8 @@ export default function ImportPage() {
                 fontWeight: 650,
                 color: 'var(--text-primary)',
                 cursor: 'pointer',
+                boxSizing: 'border-box',
+                lineHeight: '36px',
               }}
             >
               <FileCode size={15} color="var(--pufi-primary)" />
