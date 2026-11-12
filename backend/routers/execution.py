@@ -202,6 +202,7 @@ def refresh_status_endpoint(
     batch_id: str,
     request: Request,
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("OPERATOR", "CONTROLLER")),
 ) -> StatusRefreshResponse:
     correlation_id = getattr(request.state, "correlation_id", str(uuid.uuid4()))
 
@@ -245,6 +246,7 @@ def refresh_status_endpoint(
 def list_instructions(
     batch_id: str,
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_api_key),
 ) -> list[PaymentInstructionOut]:
     instructions = (
         db.query(PaymentInstruction)

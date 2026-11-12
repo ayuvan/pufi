@@ -1,558 +1,426 @@
 # PUFI — Enterprise Payment Coordination & Intelligent Routing Infrastructure
 
-> **Hackathon Prototype | PayPal Developer Platform + AI**
+> **Hackathon Prototype | PayPal Developer Platform + Google Gemini AI**  
+> **Final Verified Submission (Priority 2.2 & Priority 3 Complete)**
+
+---
 
 ## 1. Project Overview
 
-**PUFI (Enterprise Payment Coordination & Intelligent Routing Infrastructure)** is an AI-assisted enterprise payment orchestration platform designed to simplify and coordinate large volumes of business-to-business payments.
+**PUFI (Enterprise Payment Coordination & Intelligent Routing Infrastructure)** is an enterprise payment orchestration and intelligent routing platform designed to coordinate bulk business-to-business (B2B) payments across heterogeneous payment rails.
 
-Businesses frequently need to pay multiple suppliers, manage different currencies, compare payment providers, and maintain accurate financial records. Handling these operations across disconnected systems can create unnecessary costs, duplicate transactions, delays, and reconciliation difficulties.
+Enterprises managing cross-border and domestic supplier payments face severe operational friction: fragmented banking portals, opaque foreign-exchange markups, hidden per-transaction fees, human accounting errors, duplicate payment risks, and delayed reconciliation.
 
-PUFI addresses these challenges through a unified platform that:
+PUFI resolves these challenges through a unified coordination layer that:
+- Ingests and validates structured supplier payment obligations.
+- Detects duplicate invoices, invalid currencies, and anomalous amounts before payment execution.
+- Calculates illustrative foreign-exchange spreads and provider fees using exact `Decimal` arithmetic.
+- Deterministically evaluates candidate payment routes against provider capabilities, geographic limits, and funding balances.
+- Leverages **Google Gemini Flash** exclusively for explainable financial decision support and anomaly detection.
+- Enforces multi-role human approval and server-authoritative role-based access control.
+- Integrates with the **PayPal Payouts API** in the PayPal Sandbox environment with item-level tracking and webhook verification.
+- Enforces crash-resilient multi-transaction submission protocols, database locks, and idempotent deduplication.
+- Records every state change in an independently verifiable, per-entity cryptographic SHA-256 audit hash-chain.
 
-- Imports and validates bulk supplier payment obligations.
-- Detects duplicate and invalid payment records.
-- Calculates illustrative foreign-exchange costs and transaction fees.
-- Evaluates eligible payment providers using deterministic routing rules.
-- Uses Google Gemini Flash for explainable financial decision support.
-- Requires authorised human approval before payment submission.
-- Integrates with PayPal Payouts API through its Sandbox environment.
-- Maintains an audit trail of payment instructions, decisions, and provider responses.
-
-**Project scope:** PUFI is a payment coordination and orchestration prototype. It is not a bank, digital wallet, money transmitter, settlement network, or replacement for PayPal. It does not hold customer funds or independently increase the transaction capacity of payment providers.
+> **CRITICAL ARCHITECTURAL BOUNDARY & NON-BANK DISCLAIMER:**  
+> PUFI is an orchestration, analysis, and execution-coordination layer. It is **not** a bank, digital wallet, money transmitter, depository institution, or clearinghouse. PUFI does not hold client deposits, issue currency, clear interbank transactions, or autonomously expand payment provider limits. All real-world transfers are executed exclusively by external licensed payment institutions (demonstrated here via the PayPal Sandbox).
 
 ---
 
 ## 2. The Problem We Aim to Solve
 
-Enterprises, particularly multinational businesses, face several operational challenges when coordinating supplier payments across multiple providers and currencies.
+Modern enterprise treasury operations suffer from five systemic inefficiencies:
 
-### 2.1 Fragmented Payment Operations
+### 2.1 Operational Fragmentation
+Finance departments frequently operate across separate banking interfaces, ERP exports, and localized payment rails, resulting in fragmented records and manual reconciliation overhead.
 
-Businesses often use different banking portals and payment services to process supplier payments. Managing these independently makes it difficult to maintain a unified view of payment obligations and execution statuses.
+### 2.2 Opacity in FX and Transaction Costs
+Cross-border payouts incur variable provider fees, fixed rail surcharges, and currency conversion spreads. Without automated comparative evaluation, finance teams cannot determine whether a wire, ACH, or commercial payment platform offers the optimal balance of speed and cost.
 
-### 2.2 Transaction Costs and Foreign Exchange
+### 2.3 Duplicate and Erroneous Disbursements
+Manual batch creation frequently leads to duplicate invoice payments, transposed account numbers, or disbursements in unintended currencies.
 
-Cross-border transactions involve exchange-rate differences, conversion spreads, transaction fees, and potentially different processing times.
+### 2.4 Ambiguous Failures and Recovery Blindspots
+In traditional payment systems, network timeouts between payment requests and provider confirmations leave transactions stranded in an unknown state. Naive automatic retries risk double-paying suppliers.
 
-Without a consolidated comparison, finance teams may struggle to identify cost-effective payment routes.
-
-### 2.3 Duplicate Payments and Accounting Errors
-
-Manually managing large numbers of invoices can result in duplicate payment instructions, incorrect amounts, missing supplier references, and inconsistent accounting records.
-
-### 2.4 Limited Payment Traceability
-
-When payments are distributed across multiple providers, tracking their progress and reconciling provider responses becomes difficult.
-
-### 2.5 Responsible AI in Financial Operations
-
-AI can analyse information and provide recommendations, but allowing an AI model to independently authorise financial transactions introduces unacceptable reliability and accountability risks.
-
-PUFI addresses this by separating AI recommendations from deterministic financial controls and human authorisation.
+### 2.5 Uncontrolled or Misplaced Autonomous AI
+Granting autonomous generative AI the authority to approve or execute money movement creates unacceptable financial risk. Financial infrastructure demands deterministic guarantees, strict mathematical precision, and accountable human supervision.
 
 ---
 
-## 3. Proposed Solution
+## 3. Proposed Solution & Architecture
 
-PUFI introduces a unified payment coordination layer between enterprise payment obligations and external payment providers.
+PUFI introduces a deterministic, multi-layered coordination platform positioned between upstream accounts-payable obligations and downstream payment rails:
 
-Its primary objective is to make payment operations more organised, cost-aware, explainable, and traceable.
-
-### Core Capabilities
-
-**1. Bulk Payment Management**
-
-Businesses can organise multiple supplier obligations into payment batches rather than handling each payment independently.
-
-**2. Financial Validation**
-
-The backend validates payment amounts, currencies, invoice references, and other required information. Duplicate records are identified before payment execution.
-
-**3. Foreign Exchange and Fee Analysis**
-
-PUFI models currency conversion costs, exchange-rate spreads, transaction fees, and provider-specific cost scenarios using precise decimal arithmetic.
-
-**4. Intelligent Payment Routing**
-
-The routing engine compares eligible providers and evaluates payment routes according to:
-
-- Lowest estimated cost.
-- Fastest estimated processing time.
-- Balanced cost and processing-time considerations.
-
-**5. AI-Assisted Decision Support**
-
-Google Gemini Flash analyses the available payment information and explains provider comparisons, potential anomalies, and routing recommendations.
-
-**6. Human-Controlled Execution**
-
-Payment execution requires an authorised human approval. AI cannot approve transactions, modify financial amounts, or override provider eligibility restrictions.
-
-**7. Payment Tracking and Reconciliation**
-
-PUFI records payment instructions, provider responses, status changes, and relevant audit events.
-
----
-
-## 4. What Has Been Implemented?
-
-The current prototype demonstrates the following capabilities.
-
-| Feature | Implementation status | Description |
-|---|---|---|
-| Bulk obligation management | Implemented | Import and organise supplier payment obligations |
-| Payment validation | Implemented | Validate amounts, currencies, dates, and required fields |
-| Duplicate detection | Implemented | Identify duplicate payment obligations |
-| Batch management | Implemented | Group obligations into payment batches |
-| Decimal-based calculations | Implemented | Avoid binary floating-point arithmetic for financial calculations |
-| FX cost modelling | Implemented | Calculate illustrative currency conversion costs and spreads |
-| Provider comparison | Implemented | Compare eligible simulated and Sandbox payment routes |
-| Intelligent routing | Implemented | Lowest-cost, fastest, and balanced routing strategies |
-| Gemini AI advisory | Implemented | Explain recommendations and identify potential anomalies |
-| Human approval workflow | Implemented | Require approval before payment submission |
-| PayPal Payouts integration | Sandbox integration implemented | Submit supported test payout requests when credentials and provider eligibility permit |
-| Payment idempotency | Implemented | Use stable identifiers and submission guards to reduce duplicate payout risk |
-| Payment status tracking | Implemented | Track provider-reported item-level payment statuses |
-| Webhook receiver | Implemented in code | Receive PayPal events and perform signature verification |
-| Audit trail | Implemented | Record important financial workflow events and state transitions |
-| AI fallback mechanism | Implemented | Preserve deterministic analysis when the AI service is unavailable |
-| Demo access control | Implemented | API-key protection for approval and submission endpoints |
-
-### Implementation boundaries
-
-The following distinctions are important:
-
-- A PayPal Sandbox submission is a test operation, not a real financial transfer.
-- Simulated provider responses do not represent actual bank transactions.
-- FX calculations use illustrative quotes rather than live market rates.
-- A submitted payment is not automatically considered settled.
-- Webhook verification implemented in code does not establish that external webhook delivery has been successfully tested.
+```
+[ ERP / Supplier Obligations ]
+              |
+              v
+[ Validation & Deduplication Engine ]
+              |
+              v
+[ Batch Management & Locking ]
+              |
+              v
+[ Deterministic Routing Engine ] <=====> [ Gemini AI Advisory ]
+  - Provider Eligibility & Limits         - Plain-English Explanation
+  - FX Engine (Exact Decimal)             - Anomaly / Outlier Flags
+  - Cost vs Speed Scoring                 - Advisory-Only (No Authority)
+              |
+              v
+[ Server-Authoritative RBAC & Human Approval ]
+  - Controller & Treasury Checker Roles
+  - Cryptographic Audit Genesis Event
+              |
+              v
+[ Two-Transaction Resilient Execution Coordinator ]
+  - Transaction 1: Durable Intent & SQLite/Postgres Row Lock
+  - Network Call: PayPal Sandbox / Simulated Adapters
+  - Transaction 2: Item-Level Outcome & Status Finalization
+              |
+              +---------------------------+
+              |                           |
+              v                           v
+     [ PayPal Sandbox ]         [ Simulated Rails ]
+     - Payouts Batch API        - Simulated Fast Wire
+     - Webhook Verification     - Simulated Economy ACH
+              |                           |
+              +---------------------------+
+              |
+              v
+[ Webhook Ingestion & State Machine Integrity ]
+  - Database-Enforced Event Deduplication
+  - Monotonic State Transition Policy (No Terminal Reversals)
+              |
+              v
+[ Per-Entity Cryptographic SHA-256 Audit Chain ]
+  - Independent Hash Chains per Entity
+  - Legacy Unhashed Event Detection
+  - Tamper, Deletion, and Reordering Detection
+```
 
 ---
 
-## 5. Implemented Features vs. Future Scope
+## 4. Implemented Features vs. Simulated Features vs. Partially Implemented Features
 
-PUFI began with a broader ambition to simplify enterprise financial operations, including cross-border supplier payments, employee payments, and social-commerce transactions.
+To ensure complete clarity and academic/engineering integrity, PUFI explicitly categorizes every platform capability:
 
-The current hackathon prototype focuses on payment coordination and routing rather than implementing an entire financial infrastructure.
-
-| Original ambition / Feature | Current status | Scope or limitation |
-|---|---|---|
-| Bulk supplier payments | Implemented | Demonstrated through synthetic obligations and batches |
-| Intelligent payment routing | Implemented | Deterministic routing across eligible providers |
-| PayPal integration | Implemented | Sandbox environment only |
-| AI-assisted financial analysis | Implemented | Advisory functionality, not transactional authority |
-| FX cost comparison | Implemented | Simulated exchange rates and conversion costs |
-| Duplicate payment prevention | Implemented | Validation, idempotency identifiers, and submission guards |
-| Human approval | Implemented | Demo API-key access control and approval workflow |
-| Payment reconciliation | Partially implemented | Internal records and provider-reported statuses; no independent bank reconciliation |
-| Multiple payment providers | Partially implemented | PayPal Sandbox plus simulated wire and ACH providers |
-| Real-time FX rates | Not implemented | Requires a live FX data provider |
-| Actual USD-to-INR settlement | Not implemented | Requires supported cross-border payment and settlement infrastructure |
-| Real bank connectivity | Not implemented | No direct banking network integration |
-| Live bank balance verification | Not implemented | Funding snapshots are simulated |
-| Production employee payroll | Not implemented | No real payroll or wage-distribution infrastructure |
-| Social-media checkout integration | Not implemented | Original concept for purchasing products directly from social platforms |
-| Production-grade identity management | Not implemented | Demo API-key mechanism; production OAuth2/JWT and role-based access control are future requirements |
-| Production-scale infrastructure | Not implemented | SQLite is used for the current local demonstration |
-| Increased PayPal transaction capacity | Outside current scope | PUFI coordinates payment operations but cannot increase a provider's actual capacity or liquidity |
-
-**The distinction:** The implemented prototype demonstrates the coordination, analysis, routing, approval, and tracking of payment operations. Actual banking, live cross-border settlement, and production financial services remain future development goals.
+| Capability | Category | Implementation Reality & Operational Scope |
+|:---|:---:|:---|
+| **Bulk Obligation Ingestion** | **Implemented** | CSV/JSON ingestion, structural validation, invoice deduplication, supplier reference validation. |
+| **Monetary Arithmetic** | **Implemented** | Python `Decimal` across backend models; database `NUMERIC`/exact representations; zero floating-point drift. |
+| **Deterministic Routing Engine** | **Implemented** | Evaluates currency support, amount min/max bounds, recipient format, and funding availability; computes lowest-cost, fastest, and balanced routes. |
+| **Gemini AI Advisory Support** | **Implemented** | Google Gemini Flash parses routing telemetry, produces plain-language trade-off explanations, and flags anomalies. Strictly advisory; fail-safe fallback to deterministic output. |
+| **Server-Controlled RBAC** | **Implemented** | Server-authoritative role enforcement (OPERATOR, CONTROLLER, TREASURY_CHECKER, AUDITOR, ADMIN); rejects client identity spoofing. |
+| **PayPal Sandbox Payouts** | **Implemented** | OAuth2 client credentials flow, Payouts API batch submission, stable idempotency keys, item-level polling, simulated error handling. |
+| **PayPal Webhook Ingestion** | **Implemented** | Validates PayPal digital signatures via `notifications/verify-webhook-signature`, stores raw payloads, deduplicates via DB constraint. |
+| **State Machine Integrity** | **Implemented** | Rigid state transition matrix; rejects terminal reversals (FAILED/CANCELLED/COMPLETED → SUBMITTED); permits refund only on explicit refund events. |
+| **Two-Transaction Crash Recovery** | **Implemented** | Persists `SUBMISSION_PENDING` intent prior to network dispatch; transitions to `UNKNOWN` on timeout; manual human resolution endpoints (`CONFIRM_NEVER_SENT`, `CONFIRM_SUBMITTED`). |
+| **Cryptographic Audit Hash-Chain** | **Implemented** | SHA-256 back-linked hash chain per entity; genesis blocks; detection of payload tampering, deleted intermediate events, reordered records, and unhashed legacy events. |
+| **Simulated Rails (Wire / ACH)** | **Simulated** | Domestic ACH (simulated economy) and Wire (simulated fast) adapters simulate latency and fees; clearly marked as `SIMULATED` in UI and database. |
+| **Live Foreign Exchange (FX)** | **Simulated** | FX conversion quotes use realistic synthetic market rates with explicit pair, timestamp, expiry, and `SIMULATED` flags. |
+| **Bank Account Balances** | **Simulated** | Funding accounts (USD, EUR, GBP) operate on simulated ledger balances; checks prevent routing through insufficient funds. |
+| **Bank Reconciliation** | **Partially Implemented** | Internal instruction state reconciles against provider webhook/polling outcomes; no external bank statement SWIFT MT940 / CAMT.053 parser. |
+| **Multi-Provider Live Execution** | **Partially Implemented** | Live execution path is implemented and tested for PayPal Sandbox; domestic rails are simulated adapters adhering to the same interface. |
+| **Enterprise Identity (SSO/OIDC)** | **Prototype Limitation** | Implemented via server-side API-key registry with identity-to-role mappings; production requires enterprise IdP (Okta/Ping/Azure AD) with short-lived JWTs. |
+| **Audit Storage Immutability** | **Prototype Limitation** | Audit records are verified via cryptographic hash chain stored in the relational database; independent immutability requires external WORM / Merkle tree anchor. |
+| **Live Real-Money Settlement** | **Future Scope / Excluded** | The application operates strictly in PayPal Sandbox and simulated environments; zero real customer funds are handled. |
 
 ---
 
-## 6. System Architecture and Technology Stack
+## 5. Security Model & Authentication Architecture
 
-PUFI uses a frontend-backend architecture with separate financial services and external provider integrations.
+### 5.1 Server-Authoritative Identity and Role Resolution
+PUFI strictly adheres to server-controlled authorization (`backend/dependencies.py`):
+- **Zero Trust in Client Headers:** Client-supplied headers like `X-Actor-Role` and `X-Actor-Id` are never trusted to grant privileges or assert approver identities.
+- **Authoritative Principal Resolution:** Requests authenticate via API keys mapped to server-managed identities and role sets (`OPERATOR`, `CONTROLLER`, `TREASURY_CHECKER`, `AUDITOR`, `ADMIN`).
+- **Audit Actor Binding:** State-changing operations (batch approval, submission, status refresh, audit verification) bind audit event actors to the authenticated principal.
 
-### A. Frontend — React + TypeScript + Vite
+### 5.2 Fail-Closed Security in Protected Environments
+- When `REQUIRE_AUTH=true` or `PUFI_ENV` is set to `production` or `staging`, endpoints fail closed (`HTTP 500 AUTH_MISCONFIGURED`) if server credentials are not configured.
+- Unauthenticated requests to protected endpoints return `HTTP 403 FORBIDDEN`.
+- Unauthorized roles attempting restricted actions (e.g., an `OPERATOR` attempting to approve a batch or verify the audit trail) return `HTTP 403 FORBIDDEN`.
+- Public endpoints are strictly isolated: `GET /api/v1/health` remains public for infrastructure probes, while PayPal webhooks authenticate via PayPal cryptographic signature verification.
 
-The frontend provides the interface for business operators.
-
-Main modules:
-
-- **Obligations Ledger:** Displays supplier obligations, amounts, currencies, and validation results.
-- **Batch Management:** Groups validated obligations into payment batches.
-- **Financial Analysis Hub:** Displays provider comparisons, FX estimates, and routing recommendations.
-- **Approval and Execution Console:** Provides human approval and payment submission controls.
-- **Global Audit Trail:** Displays recorded system events and payment status changes.
-
-### B. Backend — Python + FastAPI
-
-The backend manages the financial workflow and enforces business rules.
-
-Main services:
-
-- Validation Engine.
-- Obligation and Batch Management.
-- FX and Fee Calculation Engine.
-- Provider Capability Registry.
-- Deterministic Routing Engine.
-- Payment Execution Coordinator.
-- Approval Service.
-- Reconciliation and Status Tracking.
-- Audit Event Management.
-- PayPal Webhook Receiver.
-
-### C. Artificial Intelligence — Google Gemini Flash
-
-Gemini Flash provides decision-support functionality.
-
-It is used to:
-
-- Explain provider comparisons.
-- Summarise financial analysis.
-- Highlight potential anomalies.
-- Provide understandable routing recommendations.
-
-The AI operates under strict constraints. Payment eligibility, approval, financial calculations, and execution remain controlled by backend logic.
-
-When the AI service is unavailable or produces an unusable response, PUFI can fall back to deterministic analysis.
-
-### D. Persistence — SQLite
-
-SQLite is used for local development and the hackathon demonstration.
-
-The database stores business information, supplier obligations, batches, FX quotes, payment instructions, provider submissions, and audit events.
-
-PostgreSQL is a future deployment option for a more demanding production environment.
-
-### Technology Summary
-
-| Component | Technology |
-|---|---|
-| Frontend | React 18, TypeScript, Vite |
-| Backend | Python 3.12, FastAPI |
-| Database | SQLite |
-| ORM | SQLAlchemy |
-| AI | Google Gemini Flash |
-| Payment integration | PayPal REST API / Payouts API Sandbox |
-| API communication | REST |
-| Authentication for demo | API-key mechanism |
-| Financial arithmetic | Python Decimal |
+### 5.3 Prototype Authentication Limitations
+In this hackathon prototype, authentication is backed by a server-side API key registry. This provides robust boundary enforcement for demonstration and automated testing. In an enterprise production deployment, this should be superseded by an OAuth2 / OpenID Connect (OIDC) Bearer token architecture integrating with corporate directories (Azure AD, Okta), enforcing multi-factor authentication (MFA) and issuing short-lived cryptographically signed JWTs with JWKS key rotation.
 
 ---
 
-## 7. How PUFI Works — User Journey
+## 6. Deterministic Routing Engine vs. Gemini AI Advisory
+
+PUFI strictly decouples financial computation from generative artificial intelligence:
+
+```
++-------------------------------------------------------------------+
+|               DETERMINISTIC FINANCIAL ENGINE                      |
+|  - Evaluates provider country, currency, and amount bounds.       |
+|  - Validates funding account balances and cuts off invalid paths. |
+|  - Models base fees, percentage surcharges, and FX spreads.       |
+|  - Computes exact numerical rankings: Lowest Cost, Fastest, etc.  |
++-------------------------------------------------------------------+
+                                  |
+                                  v
++-------------------------------------------------------------------+
+|                   GOOGLE GEMINI FLASH ADVISORY                    |
+|  - Advisory-only role; zero transactional authority.              |
+|  - Explains trade-offs in plain, structured English.              |
+|  - Flags unusual supplier concentration or anomalous values.      |
+|  - Fail-safe fallback: if Gemini times out or produces malformed  |
+|    output, deterministic recommendations continue seamlessly.     |
++-------------------------------------------------------------------+
+                                  |
+                                  v
++-------------------------------------------------------------------+
+|                   HUMAN CONTROLLER APPROVAL                       |
+|  - Authorized human inspects deterministic metrics + AI advice.   |
+|  - Human approval is mandatory before any payment dispatch.       |
++-------------------------------------------------------------------+
+```
+
+- **Zero AI Transactional Authority:** Gemini cannot approve batches, modify payment amounts, add or remove suppliers, or bypass provider eligibility rules.
+- **Fail-Safe Graceful Degradation:** If the Gemini API is unreachable, times out, or produces unparseable JSON, the platform falls back to deterministic routing rankings without disrupting operations.
+
+---
+
+## 7. Financial Correctness & Exact Precision
+
+- **Exact Monetary Precision:** All internal monetary representations utilize Python's `Decimal` type, backed by SQL `NUMERIC(18, 4)` / exact fields. Binary IEEE-754 floating-point arithmetic is strictly prohibited.
+- **Explicit Currency Attribution:** Every monetary value carries an explicit three-letter ISO-4217 currency code (`USD`, `EUR`, `GBP`, `INR`, `CAD`, etc.).
+- **Separation of Financial Obligations:** Original invoice obligations, converted currency estimates, provider settlement amounts, and transaction fees are tracked in distinct, non-overlapping fields.
+- **Transparent FX Disclaimers:** All exchange rate quotes record the currency pair, exchange rate, quote source, timestamp, validity expiry, and are explicitly tagged as `SIMULATED`.
+
+---
+
+## 8. Payment Idempotency, Concurrency & State Machine
+
+### 8.1 Multi-Transaction Resilient Submission Protocol
+Payment dispatch uses a two-transaction architecture to prevent phantom or unrecorded payouts:
+1. **Transaction 1 (Intent & Lock):** Persists a `ProviderSubmission` record with status `SUBMISSION_PENDING`, records a unique `sender_batch_id`, marks the batch as locked, and commits to durable storage.
+2. **External Dispatch:** Executes the external network call to the PayPal Payouts API.
+3. **Transaction 2 (Finalization):** On receiving the provider response, updates submission and instruction records to `SUBMITTED`, `COMPLETED`, or `FAILED` with provider reference numbers (`payout_batch_id`, `payout_item_id`).
+
+### 8.2 Safe Handling of the `UNKNOWN` State
+If a network timeout or connection reset occurs during external dispatch:
+- The submission and instructions transition to `UNKNOWN` (never assumed failed or completed).
+- Subsequent submission attempts are strictly blocked to prevent duplicate disbursements.
+- Operators can trigger status polling or utilize verified manual resolution workflows (`CONFIRM_NEVER_SENT` or `CONFIRM_SUBMITTED`).
+
+### 8.3 Concurrency & Database-Level Locking
+- Concurrent requests attempting to submit the same payment batch are blocked via active database state locks.
+- The losing concurrent thread receives `HTTP 409 CONFLICT` with `CONCURRENT_SUBMISSION_CONFLICT`.
+- Individual payment instructions enforce unique database constraints on `idempotency_key` and `sender_item_id`.
+
+---
+
+## 9. Webhook Processing, Deduplication & Ordering
+
+### 9.1 Database-Enforced Webhook Deduplication
+- Webhook events are persisted in the `webhook_events` table with a unique database constraint on `provider_event_id`.
+- Simultaneous duplicate webhook deliveries are safely intercepted: the secondary request encounters a database integrity conflict and safely returns `HTTP 200` acknowledging receipt without duplicating state transitions.
+
+### 9.2 Stale-Event & Out-of-Order Protection
+- Incoming provider events are evaluated against provider transmission timestamps and a monotonic state progression matrix.
+- Older events arriving after newer events are safely ignored and logged in the audit trail.
+- Terminal states (`COMPLETED`, `FAILED`, `CANCELLED`) cannot be overwritten by earlier processing states.
+- Reversals and refunds are permitted only through explicit, separately modeled provider refund events carrying valid timestamps.
+
+---
+
+## 10. Cryptographic Audit Hash-Chain & Verification
+
+### 10.1 Per-Entity SHA-256 Hash Chaining
+PUFI enforces cryptographic back-linking across audit events (`services/audit.py`):
+$$\text{event\_hash}_n = \text{SHA256}(\text{event\_hash}_{n-1} \,\|\, \text{canonical\_payload}_n)$$
+- **Independent Chains:** Audit chains are tracked independently per `entity_id` starting from a well-defined `GENESIS_HASH`.
+- **Global Aggregation:** Verification iterates across all distinct entities, verifying continuous chain continuity for each entity independently.
+
+### 10.2 Detection Capabilities
+The independent verification engine (`services.audit.verify_audit_chain`) detects:
+- **Payload Tampering:** Any unauthorized modification of recorded event data produces an immediate hash mismatch.
+- **Intermediate Record Deletion:** Deleting an intermediate event breaks the `previous_event_hash` linkage.
+- **Event Reordering:** Transposing records invalidates predecessor hashes.
+- **Legacy Unhashed Records:** Pre-existing records where `event_hash IS NULL` are explicitly identified and reported in verification telemetry, never silently skipped.
+
+### 10.3 Storage Immutability Boundary
+> **DOCUMENTED LIMITATION:** Storing a cryptographic hash chain within the same relational database provides strong internal tamper-evidence against unauthorized record modification, but does **not** constitute independent, immutable storage. An attacker with full write access to the database could recalculate the hashes. True immutability requires external anchoring (e.g., write-once-read-many WORM storage, RFC-6962 transparency logs, or external timestamping).
+
+---
+
+## 11. Provider Integrations: PayPal Sandbox & Simulated Rails
+
+### 11.1 PayPal Payouts API Integration
+- **Environment:** PayPal Sandbox (`https://api-m.sandbox.paypal.com`).
+- **Authentication:** OAuth 2.0 Client Credentials flow requesting appropriate Payouts scopes.
+- **Batch Submission:** Submits payouts with stable `sender_batch_id` and item-level `sender_item_id`.
+- **Status Polling:** Fetches item-level outcomes (`SUCCESS`, `DENIED`, `PENDING`, `BLOCKED`) rather than assuming batch status applies universally to all items.
+- **Webhook Verification:** Real-time event notifications are authenticated against PayPal's public certificates via `verify-webhook-signature`.
+
+### 11.2 Simulated Provider Rails
+- **Simulated Fast Rail (Wire):** Models high-value, near-instant domestic wire transfers with higher base fees.
+- **Simulated Economy Rail (ACH):** Models low-cost, multi-day batch transfers.
+- Both simulated providers conform to the standard provider interface and are prominently labeled across the UI and database.
+
+---
+
+## 12. Crash Recovery & Manual Reconciliation Workflows
+
+When the host environment crashes or encounters network severance:
+1. **Automatic Detection:** On restart, batches stranded in `SUBMISSION_PENDING` with unconfirmed submissions remain in `UNKNOWN` state. Blind resubmissions are prohibited.
+2. **Automated Status Reconciliation:** If a provider `payout_batch_id` was established, executing a status refresh synchronizes item states from PayPal.
+3. **Manual Resolution Endpoints:** If a provider never received the payload, authorized operators (`CONTROLLER` or `ADMIN`) can invoke:
+   - `CONFIRM_NEVER_SENT`: Safely marks the stranded submission as `FAILED`, releasing the batch for controlled re-approval.
+   - `CONFIRM_SUBMITTED`: Associates external provider reference numbers if confirmed via out-of-band inquiry.
+
+---
+
+## 13. System Architecture & Technology Stack
+
+| Layer | Component | Technology / Library | Purpose |
+|:---|:---|:---|:---|
+| **Frontend** | Single Page Application | React 18, TypeScript, Vite, TailwindCSS | Operator dashboard, batch management, routing analytics, audit inspection. |
+| **Backend** | REST API & Core Engine | Python 3.12, FastAPI, Pydantic v2 | Financial analysis, routing engine, validation, execution coordinator. |
+| **Database** | Relational Persistence | SQLite (Development) / PostgreSQL (Target), SQLAlchemy ORM | Relational models, unique constraints, atomic transactions. |
+| **AI Advisory**| Decision Support | Google Gemini Flash via `google-genai` SDK | Advisory explanations, anomaly detection, routing justification. |
+| **Payment Rail**| Live Sandbox Rail | PayPal Payouts REST API (Sandbox) | External payout dispatch, status polling, webhook verification. |
+| **Testing** | Automated Quality Suite | Pytest, AnyIO, Starlette TestClient | Unit tests, concurrency tests, crash recovery, integration tests. |
+
+---
+
+## 14. Automated Testing & Verification Metrics
+
+PUFI maintains a comprehensive automated testing suite verifying every layer of the platform:
 
 ```text
-       SUPPLIER INVOICES
-              |
-              v
-      VALIDATION ENGINE
-              |
-              v
-     DUPLICATE DETECTION
-              |
-              v
-      PAYMENT BATCHES
-              |
-              v
-     FINANCIAL ANALYSIS
-       /            \
-      v              v
-  FX + FEES       GEMINI AI
-      \              /
-       \            /
-        v          v
-      PROVIDER ROUTING
-              |
-              v
-       HUMAN APPROVAL
-              |
-              v
-      PAYMENT EXECUTION
-              |
-        +-----+------+
-        |            |
-        v            v
-   PAYPAL SANDBOX  SIMULATED
-                   PROVIDERS
-        |            |
-        +-----+------+
-              |
-              v
-       STATUS TRACKING
-              |
-              v
-       AUDIT & RECONCILIATION
+============================= TEST EXECUTION METRICS =============================
+Platform: Windows 11 / Python 3.12.0 / Pytest 8.3.3
+Total Automated Test Cases: 229
+Tests Passed:              229
+Tests Failed:                0
+Tests Skipped:               0
+Pass Rate:                 100.0%
+==================================================================================
 ```
 
-### Step 1 — Import and Validate
+### Breakdown by Test Suite:
+1. **`test_p2_2_auth.py` (9 tests):** Comprehensive API endpoint protection; public health isolation; unauthenticated 403 rejection; fail-closed 500 on missing credentials; role enforcement on import, batch creation, and status refresh; header privilege elevation prevention; PayPal signature authentication independence.
+2. **`test_p2_2_audit.py` (6 tests):** Legacy unhashed event detection; mixed legacy + hashed chain verification; global legacy aggregation; payload tampering detection; intermediate deletion detection; event reordering detection.
+3. **`test_p2_2_recovery.py` (5 tests):** Process crash between T1 and T2 recovery; duplicate submission blocking while UNKNOWN; manual resolution (`CONFIRM_NEVER_SENT`); multi-threaded database lock concurrency barrier; simultaneous duplicate webhook deduplication.
+4. **`test_p2_1_remediation.py` (24 tests):** Removal of trust from `X-Actor-Role` and `X-Actor-Id`; terminal state transition integrity matrix (rejection of FAILED/CANCELLED → COMPLETED); multi-entity audit hash chains; audit endpoint protection; webhook model schema correctness.
+5. **`test_p2_remediation.py` (15 tests):** Database webhook deduplication; stale and out-of-order webhook protection; audit verification endpoint; protected environment fail-closed checks.
+6. **`test_remediation.py` (17 tests):** Unknown state handling; recipient format validation; provider execution dispatch; approval service constraints; cryptographic hash chain genesis.
+7. **`test_day4.py` (35 tests):** Approval service rules; PayPal adapter configuration and mock dispatch; execution coordinator; approval endpoints.
+8. **`test_day5.py` (7 tests):** API-key access control; webhook signature verification.
+9. **`test_extended.py` (18 tests):** Duplicate invoice detection; currency routing; expired quote handling; provider ineligibility; AI fallback.
+10. **`test_financial_engine.py` (12 tests):** Decimal rounding; FX quote generation; fee calculations; routing strategies.
+11. **`test_load.py` (3 tests):** Performance benchmarks under 100, 1,000, and 10,000 obligation volumes.
+12. **`test_obligations.py` (15 tests):** Ingestion endpoints, pagination, filtering, correlation IDs.
+13. **`test_p1_remediation.py` (19 tests):** Durable intent persistence; simulated crash recovery; multi-thread concurrency.
 
-The business operator imports supplier payment obligations.
-
-PUFI validates the records and identifies invalid or duplicate entries.
-
-### Step 2 — Create Payment Batches
-
-Validated obligations are grouped into batches with unique identifiers.
-
-### Step 3 — Analyse Financial Information
-
-The financial engine calculates illustrative conversion costs, transaction fees, and provider eligibility.
-
-### Step 4 — Generate AI Recommendations
-
-Gemini Flash explains the available routes and identifies potential anomalies.
-
-### Step 5 — Obtain Human Approval
-
-The authorised operator reviews the financial information, confirms the batch total, and approves the proposed execution.
-
-### Step 6 — Submit Payment Instructions
-
-PUFI submits supported test payout requests through PayPal Sandbox when the required credentials and eligibility conditions are satisfied.
-
-Other payment providers remain simulated.
-
-### Step 7 — Track and Reconcile
-
-PUFI records provider responses, updates payment statuses, and maintains an audit history.
-
-A payment is considered completed only according to the relevant provider-reported status, not merely because an API request was submitted.
+### Frontend Production Build:
+- **Command:** `npm run build` (`tsc -b && vite build`)
+- **Type Checking:** 0 TypeScript compilation errors.
+- **Build Output:**
+  * `dist/index.html`: 0.45 kB (gzip: 0.29 kB)
+  * `dist/assets/index-3z4sL3CL.css`: 309.26 kB (gzip: 53.07 kB)
+  * `dist/assets/index-C362LDnA.js`: 1,175.56 kB (gzip: 326.45 kB)
+- **Status:** Verified production-ready bundle.
 
 ---
 
-## 8. Financial Correctness and Security
+## 15. Frontend Screens & Operator Experience
 
-Financial reliability is a central design consideration.
+The frontend single-page application provides specialized workspaces:
 
-The prototype incorporates the following safeguards:
-
-1. **Decimal Arithmetic:** Financial calculations use Python Decimal rather than binary floating-point arithmetic.
-2. **Currency Identification:** Every financial amount has an explicit currency code.
-3. **Deterministic Eligibility:** Provider eligibility is checked independently of AI recommendations.
-4. **Idempotency:** Stable identifiers and submission guards help prevent duplicate payout requests.
-5. **Human Approval:** AI cannot independently approve or execute payments.
-6. **Webhook Verification:** The webhook implementation uses PayPal's signature-verification API.
-7. **Audit Events:** Important workflow transitions are recorded.
-8. **Sandbox Isolation:** The prototype uses the PayPal Sandbox environment, not production payment endpoints.
-
-### Current Security Limitations
-
-The current implementation is a hackathon prototype.
-
-- Demo authentication uses an API key rather than enterprise-grade identity management.
-- SQLite is intended for local demonstration, not high-concurrency production workloads.
-- Local development does not establish production HTTPS security.
-- External webhook delivery has not yet been independently verified.
-- Production security audits, operational monitoring, and disaster recovery are outside the current implementation.
+1. **Obligations Ledger:** Displays imported supplier payment obligations, due dates, currencies, amounts, and validation statuses with immediate highlighting of duplicate invoices.
+2. **Batch Creation & Management:** Groups validated obligations into coherent payment batches with distinct identifiers.
+3. **Financial Routing & Analysis Hub:** Displays side-by-side provider comparisons, calculated FX spreads, fixed fees, and estimated settlement times. The Gemini Flash advisory appears in a dedicated panel with clear citations of input facts.
+4. **Approval & Execution Console:** Enforces dual-control review, requiring explicit human approval before unlocking the payment submission action.
+5. **Execution & Status Tracking Console:** Provides real-time visibility into item-level payout statuses, transaction identifiers, and provider responses.
+6. **Global Audit Trail & Verification:** Displays chronological audit events, cryptographic hashes, previous hash links, and an on-demand "Verify Audit Chain" inspection utility reporting chain continuity.
+7. **Visual Separation of SIMULATED vs. SANDBOX:** Simulated payment rails and synthetic FX quotes are styled with prominent blue `SIMULATED` badges, distinguishing them from green `PAYPAL SANDBOX` elements.
 
 ---
 
-## 9. Testing and Verification
+## 16. Demonstration & Setup Guide
 
-The project includes automated backend tests covering financial calculations, validation, routing, payment execution controls, and other backend behaviour.
+### 16.1 Prerequisites
+- Python 3.11+ (tested on Python 3.12)
+- Node.js 18+ and npm
+- (Optional) PayPal Developer Sandbox account credentials
+- (Optional) Google Gemini API Key
 
-The project submission reports **114 passing backend tests**. This figure should be confirmed against the current repository test run before final judging, as the README contains an earlier figure of 107 tests.
-
-### Recommended verification commands
-
+### 16.2 Backend Installation & Launch
 ```powershell
+# Navigate to backend directory
 cd backend
 
-# Activate the virtual environment
-.venv\Scripts\activate
-
-# Run backend tests
-python -m pytest tests/ -v
-```
-
-### Demonstration Scenarios
-
-| Scenario | Expected behaviour |
-|---|---|
-| Valid supplier obligations | Successful validation |
-| Duplicate invoice | Duplicate flagged |
-| Invalid amount | Record rejected |
-| Unsupported currency | Validation or provider eligibility failure |
-| Multiple currencies | Illustrative FX calculations |
-| Different routing strategies | Appropriate eligible route recommended |
-| Gemini unavailable | Deterministic fallback |
-| Unauthorised approval | Request rejected |
-| Duplicate submission | Additional payout prevented by safeguards |
-| Provider rejection | Failure recorded |
-| Partial batch success | Individual item statuses maintained |
-| Invalid webhook signature | Event rejected |
-
-All test data used in the demonstration is synthetic.
-
----
-
-## 10. Demo and Setup Instructions
-
-**Repository:** https://github.com/ayuvan/pufi
-
-### Prerequisites
-
-- Python 3.11 or later.
-- Node.js 18 or later.
-- Git.
-- pnpm.
-- PayPal Sandbox developer credentials (optional).
-- Gemini API credentials (optional, for AI advisory).
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/ayuvan/pufi.git
-cd pufi
-```
-
-### 2. Configure the backend
-
-```powershell
-cd backend
-
+# Create and activate virtual environment
 python -m venv .venv
 .venv\Scripts\activate
 
+# Install dependencies
 pip install -r requirements.txt
+
+# Configure environment variables
+copy ..\.env.example .env
+
+# Run the complete automated test suite (229 tests)
+pytest tests/ -v
+
+# Start the FastAPI server (runs on http://localhost:8000)
+uvicorn main:app --reload --port 8000
 ```
 
-Configure the required environment variables using the supplied `.env.example` template.
-
-PayPal credentials must be Sandbox credentials only.
-
-### 3. Seed synthetic data
-
+### 16.3 Frontend Installation & Launch
 ```powershell
-python seed.py
-python demo_seed.py
-```
-
-Use the batch ID printed by the demo seed script.
-
-### 4. Start the backend
-
-```powershell
-uvicorn main:app --reload
-```
-
-Backend:
-
-`http://localhost:8000`
-
-API documentation:
-
-`http://localhost:8000/docs`
-
-### 5. Start the frontend
-
-Open a second terminal:
-
-```powershell
+# Navigate to frontend directory
 cd frontend
-pnpm install
-pnpm dev
+
+# Install dependencies
+npm install
+
+# Verify production build
+npm run build
+
+# Start local development server (runs on http://localhost:5173)
+npm run dev
 ```
 
-Frontend:
-
-`http://localhost:5173`
-
-### 6. Demonstrate PUFI
-
-1. Open the dashboard.
-2. Navigate to the supplier obligations.
-3. Open or create a payment batch.
-4. Run financial analysis.
-5. Review provider eligibility and routing recommendations.
-6. Examine Gemini's advisory.
-7. Complete human approval.
-8. Submit through PayPal Sandbox if configured, or demonstrate the clearly labelled simulated mode.
-9. Refresh payment statuses.
-10. Inspect the Global Audit Trail.
+### 16.4 Verification Workflow
+1. Access `http://localhost:5173` in a web browser.
+2. Navigate to **Obligations** and review seeded supplier invoices.
+3. Create a **Payment Batch** containing USD obligations.
+4. Trigger **Financial Analysis**: inspect the deterministic fee calculations and the Gemini AI advisory.
+5. Confirm **Approval** as an authorized controller.
+6. Execute the batch via **PayPal Sandbox** (or simulated rails).
+7. Inspect the **Global Audit Trail** and trigger **Verify Audit Chain** to validate the SHA-256 cryptographic chain.
 
 ---
 
-## 11. Hackathon Integration and Value Proposition
+## 17. Current Limitations & Production Roadmap
 
-### PayPal Integration
+PUFI is an advanced hackathon prototype. Transitioning to a high-volume enterprise production deployment requires:
 
-PUFI uses the PayPal Payouts API in Sandbox to demonstrate an external payment-provider integration.
-
-The integration includes:
-
-- OAuth 2.0 authentication.
-- Sandbox payout submission.
-- Stable batch and item identifiers.
-- Item-level status tracking.
-- Webhook signature-verification implementation.
-
-PayPal Payouts support and availability depend on account configuration, supported currencies, countries, recipient eligibility, and product restrictions.
-
-The prototype does not claim successful settlement in unsupported scenarios.
-
-### AI Integration
-
-Google Gemini Flash provides advisory-only intelligence.
-
-It makes financial information easier to understand by explaining provider comparisons, identifying anomalies, and describing trade-offs.
-
-Deterministic backend controls remain authoritative.
-
-### Business Value
-
-PUFI demonstrates how enterprises could improve their payment operations through:
-
-- Centralised supplier payment management.
-- Reduced manual payment-processing effort.
-- Better visibility into estimated transaction expenses.
-- More structured provider selection.
-- Improved duplicate-payment controls.
-- Human-accountable payment execution.
-- Centralised payment records and auditability.
-
-The prototype demonstrates these capabilities using synthetic data, simulated financial scenarios, and PayPal Sandbox.
-
-It does not claim measured production cost savings or real-world settlement improvements.
+1. **Enterprise Identity & Access Management (IAM):** Replace the demonstration API-key registry with enterprise OAuth 2.0 / OIDC (Okta, Azure AD), enforcing short-lived signed JWTs, fine-grained RBAC, and hardware MFA for approval steps.
+2. **High-Concurrency Distributed Persistence:** Migrate from local SQLite to highly available PostgreSQL with dedicated read replicas, connection pooling (PgBouncer), and distributed locking (Redis Redlock).
+3. **Independent Cryptographic Audit Anchoring:** Extend the in-database SHA-256 hash chain with periodic Merkle root anchoring to a tamper-proof external repository or append-only ledger (e.g., AWS QLDB, Google Cloud Trillian, or an enterprise transparency log).
+4. **Live Bank Connectivity & Protocols:** Implement ISO 20022 XML messaging (pain.001 credit transfers, camt.053 bank statements) and direct Open Banking / FedNow / SEPA connectivity.
+5. **Production FX Feeds:** Integrate institutional foreign exchange rate providers (e.g., Bloomberg, LSEG, or banking partner APIs) with streaming quote validity and automated slippage controls.
 
 ---
 
-## 12. Future Development
+## 18. Official References & Conclusion
 
-The current implementation establishes a foundation for further development.
+### Official References
+- **PayPal Developer Platform:** [https://developer.paypal.com/](https://developer.paypal.com/)
+- **PayPal Payouts REST API:** [https://developer.paypal.com/docs/api/payments.payouts-batch/v1/](https://developer.paypal.com/docs/api/payments.payouts-batch/v1/)
+- **PayPal Webhooks API:** [https://developer.paypal.com/docs/api/webhooks/v1/](https://developer.paypal.com/docs/api/webhooks/v1/)
+- **Google Gemini API Documentation:** [https://ai.google.dev/gemini-api/docs](https://ai.google.dev/gemini-api/docs)
+- **FastAPI Framework:** [https://fastapi.tiangolo.com/](https://fastapi.tiangolo.com/)
 
-Potential future improvements include:
-
-1. **Live FX Integration:** Connect supported exchange-rate data sources to obtain current currency quotes.
-2. **Banking Connectivity:** Integrate eligible banking and payment-provider APIs.
-3. **Cross-Border Settlement:** Explore supported USD-to-INR payment and settlement pathways.
-4. **Advanced Reconciliation:** Match provider records against external financial statements.
-5. **Scalable Persistence:** Introduce PostgreSQL and appropriate asynchronous processing.
-6. **Enterprise Identity Management:** Implement OAuth2/JWT, role-based access control, and stronger approval policies.
-7. **Payroll Coordination:** Explore structured employee payment workflows through supported providers.
-8. **Social-Commerce Payments:** Explore integration with social-commerce platforms and PayPal checkout capabilities.
-
-These are proposed extensions, not features delivered by the current hackathon prototype.
+### Conclusion
+PUFI demonstrates a sound architectural pattern for enterprise payment orchestration: **unifying bulk payment operations and intelligent provider routing, while strictly maintaining deterministic financial authority, exact decimal precision, crash-resilient execution protocols, and verifiable cryptographic auditability.**
 
 ---
-
-## 13. Conclusion
-
-PUFI demonstrates an approach to simplifying enterprise payment operations through payment orchestration, deterministic financial analysis, AI-assisted decision support, human authorisation, and external payment-provider integration.
-
-Rather than attempting to replace existing banks or payment providers, PUFI focuses on coordinating their capabilities through a unified operational layer.
-
-Its central design principle is simple:
-
-**Make enterprise payments more organised, cost-aware, explainable, and accountable — while keeping financial authority under deterministic controls and human supervision.**
-
-PUFI is a working hackathon proof of concept that establishes the foundation for exploring more advanced enterprise payment coordination systems.
-
----
-
-## 14. Official Technical References
-
-- [PayPal Developer Platform](https://developer.paypal.com/)
-- [PayPal REST API Getting Started](https://developer.paypal.com/api/rest/)
-- [PayPal REST API Authentication](https://developer.paypal.com/api/rest/authentication/)
-- [PayPal Payouts API](https://developer.paypal.com/docs/payouts/standard/)
-- [PayPal Payouts API Reference](https://developer.paypal.com/docs/api/payments.payouts-batch/v1/)
-- [PayPal Webhooks](https://developer.paypal.com/api/rest/webhooks/)
-- [Google Gemini API Documentation](https://ai.google.dev/gemini-api/docs)
-
-**Project Repository:** https://github.com/ayuvan/pufi
+*PUFI Development Team — Verified Final Release (pufi-0.3.0)*

@@ -14,6 +14,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
 
+from dependencies import Principal, require_api_key, require_role
 from models.db import get_db
 from models.entities import BatchObligation, Obligation, PaymentBatch
 from schemas.obligation import BatchCreateRequest, BatchObligationSummary, BatchOut
@@ -49,6 +50,7 @@ def create_batch(
     request: Request,
     body: BatchCreateRequest,
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("OPERATOR", "CONTROLLER")),
 ) -> BatchOut:
     business_id = _get_default_business_id(db)
 
@@ -153,6 +155,7 @@ def list_batches(
     limit: int = 50,
     offset: int = 0,
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_api_key),
 ) -> list[BatchOut]:
     business_id = _get_default_business_id(db)
     batches = (
@@ -189,6 +192,7 @@ def list_batches(
 def get_batch(
     batch_id: str,
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_api_key),
 ) -> BatchOut:
     batch = (
         db.query(PaymentBatch)

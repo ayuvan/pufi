@@ -25,6 +25,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session, joinedload
 
+from dependencies import Principal, require_api_key, require_role
 from models.db import get_db
 from models.entities import AiRecommendation, AuditEvent, BatchObligation, Obligation, PaymentBatch, Supplier
 from schemas.analysis import (
@@ -102,6 +103,7 @@ def analyze_batch_endpoint(
         description="Routing strategy: LOWEST_COST | FASTEST | BALANCED",
     ),
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("OPERATOR", "CONTROLLER", "TREASURY_CHECKER")),
 ) -> BatchAnalysisResponse:
     """
     Run deterministic eligibility and cost analysis for all obligations in a batch.
@@ -374,6 +376,7 @@ def analyze_batch_endpoint(
 def get_batch_analysis(
     batch_id: str,
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_api_key),
 ) -> dict:
     """
     Returns the most recently stored AI recommendation for a batch.

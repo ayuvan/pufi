@@ -120,6 +120,7 @@ class AuditVerificationResult:
         is_valid: True if and only if all cryptographic links and row hashes match.
         total_events_checked: Total number of chained AuditEvent rows inspected across all chains.
         chains_checked: Total number of independent entity chains validated.
+        legacy_unhashed_count: Number of audit records predating hash-chain implementation (event_hash IS NULL).
         broken_entity_id: The specific entity UUID/ID where failure was detected.
         broken_event_id: The specific event UUID where a mismatch or broken link was detected.
         failure_reason: Concise, diagnostic explanation of what failed (tampering, deletion, reordering).
@@ -129,6 +130,7 @@ class AuditVerificationResult:
     is_valid: bool
     total_events_checked: int
     chains_checked: int = 1
+    legacy_unhashed_count: int = 0
     broken_entity_id: Optional[str] = None
     broken_event_id: Optional[str] = None
     failure_reason: Optional[str] = None
@@ -142,22 +144,48 @@ class AuditVerificationResult:
 def _verify_single_entity_chain(db: Session, entity_id: str) -> AuditVerificationResult:
     """
     Verifies the cryptographic SHA-256 hash chain for a single, independent entity.
+    Detects and reports legacy records without hashes (event_hash IS NULL).
     """
-    events = (
+    # Query ALL events for this entity — never silently exclude legacy records
+    all_events = (
         db.query(AuditEvent)
-        .filter(AuditEvent.entity_id == entity_id, AuditEvent.event_hash.isnot(None))
+        .filter(AuditEvent.entity_id == entity_id)
         .order_by(AuditEvent.created_at.asc(), AuditEvent.id.asc())
         .all()
     )
 
-    if not events:
+    if not all_events:
         return AuditVerificationResult(
             is_valid=True,
             total_events_checked=0,
             chains_checked=1,
+            legacy_unhashed_count=0,
             chain_head_hash=GENESIS_HASH,
             details={"scope": entity_id, "message": "No audit records found for entity."},
         )
+
+    # Separate legacy (unhashed) and hashed events
+    legacy_events = [e for e in all_events if not e.event_hash]
+    hashed_events = [e for e in all_events if e.event_hash]
+    legacy_count = len(legacy_events)
+
+    if not hashed_events:
+        # Entity has ONLY legacy records — report as unverifiable
+        return AuditVerificationResult(
+            is_valid=True,
+            total_events_checked=len(all_events),
+            chains_checked=1,
+            legacy_unhashed_count=legacy_count,
+            chain_head_hash=GENESIS_HASH,
+            details={
+                "scope": entity_id,
+                "legacy_unhashed_records": legacy_count,
+                "warning": f"{legacy_count} record(s) predate hash-chain implementation and cannot be verified",
+                "message": "Entity has only legacy records without cryptographic hashes.",
+            },
+        )
+
+    events = hashed_events
 
     # Reorder events along the cryptographic chain if equal timestamps caused secondary sort ambiguity
     genesis_candidates = [e for e in events if not e.prev_hash or e.prev_hash == GENESIS_HASH]
@@ -248,28 +276,35 @@ def _verify_single_entity_chain(db: Session, entity_id: str) -> AuditVerificatio
 
         expected_prev = ev.event_hash or ""
 
+    details = {
+        "scope": entity_id,
+        "verified_at": datetime.now(timezone.utc).isoformat(),
+        "first_event_id": events[0].id if events else None,
+        "latest_event_id": events[-1].id if events else None,
+    }
+    if legacy_count > 0:
+        details["legacy_unhashed_records"] = legacy_count
+        details["warning"] = f"{legacy_count} record(s) predate hash-chain implementation and cannot be verified"
+
     return AuditVerificationResult(
         is_valid=True,
-        total_events_checked=len(events),
+        total_events_checked=len(all_events),
         chains_checked=1,
+        legacy_unhashed_count=legacy_count,
         chain_head_hash=events[-1].event_hash if events else GENESIS_HASH,
-        details={
-            "scope": entity_id,
-            "verified_at": datetime.now(timezone.utc).isoformat(),
-            "first_event_id": events[0].id if events else None,
-            "latest_event_id": events[-1].id if events else None,
-        },
+        details=details,
     )
 
 
 def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVerificationResult:
     """
-    Independently callable audit-chain verification function (Priority 2.1).
+    Independently callable audit-chain verification function (Priority 2.1 & 2.2).
 
     Verifies the relationship between every event and its predecessor, detecting:
     - Modified event contents (payload tampering, unauthorized field edits).
     - Broken hash links (missing, dropped, or deleted intermediate events).
     - Out-of-order reordering or malicious insertions.
+    - Legacy unhashed records (detected and reported, never silently excluded).
 
     Global Verification (entity_id=None):
     - Independent entity chains are verified separately.
@@ -284,9 +319,9 @@ def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVer
         return _verify_single_entity_chain(db, entity_id=entity_id)
 
     # Global verification: validate independent entity chains separately
+    # Do not filter on event_hash.isnot(None) so legacy unhashed records are never silently ignored
     distinct_rows = (
         db.query(AuditEvent.entity_id)
-        .filter(AuditEvent.event_hash.isnot(None))
         .distinct()
         .all()
     )
@@ -297,11 +332,13 @@ def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVer
             is_valid=True,
             total_events_checked=0,
             chains_checked=0,
+            legacy_unhashed_count=0,
             chain_head_hash=GENESIS_HASH,
             details={"scope": "GLOBAL", "message": "No audit records found across any entity."},
         )
 
     total_events = 0
+    total_legacy_unhashed = 0
     all_valid = True
     first_failure: Optional[AuditVerificationResult] = None
     failed_entities: list[Dict[str, Any]] = []
@@ -309,6 +346,7 @@ def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVer
     for eid in sorted(entity_ids):
         res = _verify_single_entity_chain(db, entity_id=eid)
         total_events += res.total_events_checked
+        total_legacy_unhashed += res.legacy_unhashed_count
         if not res.is_valid:
             all_valid = False
             failed_entities.append({
@@ -324,6 +362,7 @@ def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVer
             is_valid=False,
             total_events_checked=total_events,
             chains_checked=len(entity_ids),
+            legacy_unhashed_count=total_legacy_unhashed,
             broken_entity_id=first_failure.broken_entity_id,
             broken_event_id=first_failure.broken_event_id,
             failure_reason=first_failure.failure_reason,
@@ -331,21 +370,28 @@ def verify_audit_chain(db: Session, entity_id: Optional[str] = None) -> AuditVer
             details={
                 "scope": "GLOBAL",
                 "chains_checked": len(entity_ids),
+                "legacy_unhashed_count": total_legacy_unhashed,
                 "failed_chains_count": len(failed_entities),
                 "failed_entities": failed_entities,
             },
         )
 
+    details = {
+        "scope": "GLOBAL",
+        "chains_checked": len(entity_ids),
+        "status": "All independent entity chains verified intact",
+    }
+    if total_legacy_unhashed > 0:
+        details["legacy_unhashed_records"] = total_legacy_unhashed
+        details["warning"] = f"{total_legacy_unhashed} legacy record(s) predate hash-chain implementation and cannot be verified"
+
     return AuditVerificationResult(
         is_valid=True,
         total_events_checked=total_events,
         chains_checked=len(entity_ids),
+        legacy_unhashed_count=total_legacy_unhashed,
         chain_head_hash=None,
-        details={
-            "scope": "GLOBAL",
-            "chains_checked": len(entity_ids),
-            "status": "All independent entity chains verified intact",
-        },
+        details=details,
     )
 
 

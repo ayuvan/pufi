@@ -13,6 +13,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session, joinedload
 
+from dependencies import Principal, require_api_key, require_role
 from models.db import get_db
 from models.entities import Obligation
 from schemas.obligation import (
@@ -58,6 +59,7 @@ def list_obligations(
     status: str = Query(default=None, description="Filter by status (e.g. DRAFT, VALIDATED)"),
     business_id: str = Query(default=None, description="Filter by business ID (optional)"),
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_api_key),
 ) -> ObligationListResponse:
     """
     Returns obligations ordered by created_at descending.
@@ -113,6 +115,7 @@ def import_obligations(
     request: Request,
     rows: list[ObligationImportRow],
     db: Session = Depends(get_db),
+    principal: Principal = Depends(require_role("OPERATOR", "CONTROLLER")),
 ) -> ImportResponse:
     """
     Per-row import logic:
