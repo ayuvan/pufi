@@ -32,10 +32,11 @@ State machine for PaymentInstruction.status:
 import uuid
 from datetime import datetime, date, timezone  # M-4: include timezone
 from decimal import Decimal
+from typing import Optional
 
 from sqlalchemy import (
     CheckConstraint, Column, Date, DateTime, Integer,
-    ForeignKey, Numeric, String, Text, UniqueConstraint, Boolean,
+    ForeignKey, Numeric, String, Text, UniqueConstraint, Boolean, Index,
 )
 from sqlalchemy.orm import relationship  # L-3: removed unused Mapped
 
@@ -461,6 +462,10 @@ class PaymentInstruction(Base):
     paypal_item_status: str = Column(String(30), nullable=True)
     error_message: str = Column(Text, nullable=True)
 
+    # Priority 2.0: Stale-event and out-of-order tracking
+    last_event_time: datetime = Column(DateTime, nullable=True)
+    last_event_id: str = Column(String(100), nullable=True)
+
     created_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
     updated_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
 
@@ -621,3 +626,48 @@ class AuditEvent(Base):
             f"<AuditEvent entity={self.entity_type}/{self.entity_id!r} "
             f"event={self.event_type!r} actor={self.actor!r}>"
         )
+
+
+# ---------------------------------------------------------------------------
+# WebhookEvent (Priority 2.0 Database-level Webhook Deduplication)
+# ---------------------------------------------------------------------------
+
+class WebhookEvent(Base):
+    """
+    Durable record of an incoming payment provider webhook event.
+
+    Enforces database-level uniqueness across (provider, provider_event_id)
+    to prevent concurrent and duplicate webhook processing from creating duplicate
+    state transitions.
+
+    Persists full redacted transmission details for auditing, debugging, and incident response.
+    """
+    __tablename__ = "webhook_events"
+
+    id: str = Column(String(36), primary_key=True, default=_new_uuid)
+    provider: str = Column(String(50), nullable=False, default="PAYPAL")
+    provider_event_id: str = Column(String(100), nullable=False)
+    event_type: str = Column(String(100), nullable=False)
+    resource_type: str = Column(String(50), nullable=True)
+    resource_id: str = Column(String(100), nullable=True)
+    event_time: Optional[datetime] = Column(DateTime, nullable=True)
+    transmission_id: str = Column(String(100), nullable=True)
+    status: str = Column(String(50), nullable=False, default="RECEIVED")
+    payload_json: str = Column(Text, nullable=True)
+    headers_json: str = Column(Text, nullable=True)
+    error_message: Optional[str] = Column(Text, nullable=True)
+
+    created_at: datetime = Column(DateTime, nullable=False, default=_utcnow)
+    processed_at: Optional[datetime] = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_event_id", name="uq_webhook_event_provider_id"),
+        Index("ix_webhook_events_provider_event", "provider", "provider_event_id"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<WebhookEvent provider={self.provider!r} id={self.provider_event_id!r} "
+            f"type={self.event_type!r} status={self.status!r}>"
+        )
+

@@ -47,12 +47,13 @@ from typing import Optional
 
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from models.db import get_db
 from models.entities import (
     ActiveBatchSubmission, AuditEvent, PaymentBatch,
-    PaymentInstruction, ProviderSubmission,
+    PaymentInstruction, ProviderSubmission, WebhookEvent,
 )
 from services.audit import record_audit_event
 
@@ -72,6 +73,22 @@ _EVENT_TYPE_MAP: dict[str, tuple[str, str]] = {
     "PAYMENT.PAYOUTS-ITEM.DENIED":     ("FAILED",     "NOT_CONFIRMED"),
     "PAYMENT.PAYOUTS-ITEM.UNCLAIMED":  ("SUBMITTED",  "NOT_CONFIRMED"),
 }
+
+TERMINAL_STATUSES: set[str] = {"COMPLETED", "FAILED", "CANCELLED"}
+
+
+def _parse_event_datetime(raw: Optional[str]) -> Optional[datetime]:
+    """Parse an ISO 8601 provider timestamp into an explicit UTC datetime."""
+    if not raw:
+        return None
+    try:
+        dt_str = raw.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(dt_str)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
 
 
 def _get_access_token() -> Optional[str]:
@@ -238,23 +255,77 @@ async def receive_paypal_webhook(
 
     event_id   = event.get("id", "")
     event_type = event.get("event_type", "")
+    resource = event.get("resource", {})
 
-    # --- Idempotency: reject duplicate event IDs ---
-    event_id_hash = hashlib.sha256(event_id.encode()).hexdigest() if event_id else ""
-    existing = (
-        db.query(AuditEvent)
+    now = datetime.now(timezone.utc)
+    raw_event_time = (
+        event.get("create_time")
+        or resource.get("time_processed")
+        or resource.get("time_updated")
+        or transmission_time
+    )
+    parsed_event_time = _parse_event_datetime(raw_event_time)
+
+    # --- Priority 2.0: Database-level Webhook Deduplication ---
+    # 1. Pre-query WebhookEvent table
+    existing_webhook = (
+        db.query(WebhookEvent)
         .filter(
-            AuditEvent.entity_type == "WEBHOOK",
-            AuditEvent.correlation_id == event_id_hash,
+            WebhookEvent.provider == "PAYPAL",
+            WebhookEvent.provider_event_id == event_id,
         )
         .first()
     )
-    if existing:
-        logger.info("Webhook duplicate ignored: event_id=%s", event_id)
-        return {"status": "DUPLICATE_IGNORED", "event_id": event_id}
+    if existing_webhook:
+        logger.info("Webhook duplicate ignored via database uniqueness: event_id=%s", event_id)
+        return {
+            "status": "DUPLICATE_IGNORED",
+            "event_id": event_id,
+            "recorded_status": existing_webhook.status,
+            "message": "Duplicate webhook event previously received and ignored.",
+        }
 
-    # --- Record raw event with cryptographic hash chaining ---
-    now = datetime.now(timezone.utc)
+    # 2. Insert WebhookEvent record and flush to enforce DB UNIQUE constraint
+    redacted_event = {k: v for k, v in event.items() if k not in ("client_secret", "access_token")}
+    resource_id = (
+        resource.get("payout_item_id")
+        or resource.get("payout_batch_id")
+        or resource.get("payout_item", {}).get("payout_item_id")
+        or event_id
+    )
+
+    webhook_record = WebhookEvent(
+        provider="PAYPAL",
+        provider_event_id=event_id,
+        event_type=event_type,
+        resource_type=event.get("resource_type", "payouts_item"),
+        resource_id=resource_id,
+        event_time=parsed_event_time,
+        transmission_id=transmission_id,
+        status="RECEIVED",
+        payload_json=json.dumps(redacted_event),
+        headers_json=json.dumps({
+            "transmission_id": transmission_id,
+            "transmission_time": transmission_time,
+            "cert_url": cert_url,
+            "auth_algo": auth_algo,
+        }),
+        created_at=now,
+    )
+    db.add(webhook_record)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        logger.info("Simultaneous duplicate webhook caught by database UNIQUE constraint: event_id=%s", event_id)
+        return {
+            "status": "DUPLICATE_IGNORED",
+            "event_id": event_id,
+            "message": "Simultaneous duplicate webhook caught by database constraint.",
+        }
+
+    # --- Record raw event in AuditEvent with cryptographic hash chaining ---
+    event_id_hash = hashlib.sha256(event_id.encode()).hexdigest() if event_id else ""
     record_audit_event(
         db=db,
         entity_type="WEBHOOK",
@@ -265,16 +336,15 @@ async def receive_paypal_webhook(
         details_redacted=json.dumps({
             "event_type": event_type,
             "transmission_id": transmission_id,
+            "event_time": parsed_event_time.isoformat() if parsed_event_time else None,
             "verified": True,
         }),
     )
 
     # --- Process known event types ---
     new_status, settlement_evidence = _EVENT_TYPE_MAP.get(event_type, (None, None))
-    resource = event.get("resource", {})
 
     if new_status:
-        # Extract payout_item_id from event resource
         payout_item_id = resource.get("payout_item_id") or resource.get("payout_item", {}).get("payout_item_id")
         sender_item_id = resource.get("payout_item", {}).get("sender_item_id")
         transaction_id = resource.get("transaction_id")
@@ -295,11 +365,28 @@ async def receive_paypal_webhook(
             )
 
         if instruction:
-            # Enforce state precedence: late webhooks cannot regress COMPLETED to non-terminal
-            if instruction.status == "COMPLETED" and new_status not in ("FAILED", "RETURNED", "REFUNDED", "REVERSED"):
+            # Priority 2.0: Stale-event and Out-of-Order protection
+            # 1. Check duplicate terminal state:
+            if instruction.status in TERMINAL_STATUSES and instruction.status == new_status:
                 logger.info(
-                    "State precedence enforced: ignoring late webhook %s for already COMPLETED instruction %s",
-                    event_type, instruction.id,
+                    "Duplicate terminal event ignored: instruction %s already in terminal status %s",
+                    instruction.id, instruction.status,
+                )
+                webhook_record.status = "IGNORED_DUPLICATE_TERMINAL"
+                webhook_record.processed_at = now
+                db.commit()
+                return {
+                    "status": "DUPLICATE_IGNORED",
+                    "event_id": event_id,
+                    "instruction_id": instruction.id,
+                    "reason": f"Instruction already in terminal status {instruction.status}",
+                }
+
+            # 2. Check terminal state reversion attempt:
+            if instruction.status in TERMINAL_STATUSES and new_status not in ("FAILED", "RETURNED", "REFUNDED", "REVERSED", "COMPLETED"):
+                logger.info(
+                    "State precedence enforced: ignoring late non-terminal event %s for already %s instruction %s",
+                    event_type, instruction.status, instruction.id,
                 )
                 record_audit_event(
                     db=db,
@@ -312,75 +399,157 @@ async def receive_paypal_webhook(
                         "event_type": event_type,
                         "current_status": instruction.status,
                         "attempted_status": new_status,
+                        "reason": "Terminal status cannot be reverted by non-terminal event",
                     }),
                 )
-            else:
-                instruction.status = new_status
-                instruction.settlement_evidence = settlement_evidence
-                instruction.paypal_item_status = event_type.split(".")[-1]
-                if transaction_id:
-                    instruction.paypal_transaction_id = transaction_id
-                if payout_item_id and not instruction.paypal_payout_item_id:
-                    instruction.paypal_payout_item_id = payout_item_id
-                instruction.updated_at = now
+                webhook_record.status = "IGNORED_STALE"
+                webhook_record.processed_at = now
+                db.commit()
+                return {
+                    "status": "OUT_OF_ORDER_IGNORED",
+                    "event_id": event_id,
+                    "instruction_id": instruction.id,
+                    "reason": "Terminal status cannot be reverted by non-terminal event",
+                }
 
-                # Correlate and update associated ProviderSubmission
-                submission = (
-                    db.query(ProviderSubmission)
-                    .filter(ProviderSubmission.batch_id == instruction.batch_id)
-                    .order_by(ProviderSubmission.created_at.desc())
-                    .first()
+            # 3. Check conflicting terminal state:
+            if instruction.status == "COMPLETED" and new_status in ("FAILED", "BLOCKED", "DENIED"):
+                logger.warning(
+                    "Conflicting terminal update rejected: event %s attempted to transition COMPLETED instruction %s to %s",
+                    event_id, instruction.id, new_status,
                 )
-                if submission:
-                    if payout_batch_id and not submission.paypal_payout_batch_id:
-                        submission.paypal_payout_batch_id = payout_batch_id
-                    if submission.status == "UNKNOWN":
-                        submission.status = "SUBMITTED"
-
-                # Re-evaluate associated PaymentBatch status across all instructions
-                batch = db.query(PaymentBatch).filter(PaymentBatch.id == instruction.batch_id).first()
-                if batch:
-                    all_instrs = (
-                        db.query(PaymentInstruction)
-                        .filter(PaymentInstruction.batch_id == batch.id)
-                        .all()
-                    )
-                    total = len(all_instrs)
-                    completed_count = sum(1 for i in all_instrs if i.status == "COMPLETED")
-                    failed_count = sum(1 for i in all_instrs if i.status in ("FAILED", "RETURNED", "REFUNDED", "REVERSED"))
-                    unresolved_count = sum(1 for i in all_instrs if i.status in ("UNKNOWN", "SUBMITTED", "PENDING", "APPROVED"))
-
-                    if total > 0:
-                        if completed_count == total:
-                            batch.status = "COMPLETED"
-                        elif failed_count == total:
-                            batch.status = "FAILED"
-                        elif completed_count > 0 and failed_count > 0:
-                            batch.status = "PARTIALLY_COMPLETED"
-                        elif unresolved_count > 0:
-                            batch.status = "SUBMITTED"
-
-                    if batch.status in ("COMPLETED", "FAILED", "PARTIALLY_COMPLETED"):
-                        db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch.id).delete()
-
                 record_audit_event(
                     db=db,
                     entity_type="INSTRUCTION",
                     entity_id=instruction.id,
-                    event_type="WEBHOOK_RECONCILIATION_APPLIED",
+                    event_type="WEBHOOK_CONFLICT_REJECTED",
                     actor="PAYPAL_WEBHOOK",
                     correlation_id=event_id_hash,
                     details_redacted=json.dumps({
                         "event_type": event_type,
-                        "instruction_status": instruction.status,
-                        "batch_status": batch.status if batch else None,
-                        "payout_item_id": payout_item_id,
+                        "current_status": instruction.status,
+                        "attempted_status": new_status,
+                        "reason": "Cannot transition COMPLETED instruction to FAILED without explicit refund/reversal",
                     }),
                 )
-                logger.info(
-                    "Webhook applied: event=%s instruction=%s new_status=%s batch_status=%s",
-                    event_type, instruction.id, new_status, batch.status if batch else "None",
+                webhook_record.status = "REJECTED_CONFLICT"
+                webhook_record.processed_at = now
+                db.commit()
+                return {
+                    "status": "CONFLICT_REJECTED",
+                    "event_id": event_id,
+                    "instruction_id": instruction.id,
+                    "error": "Conflicting terminal state update rejected",
+                }
+
+            # 4. Check timestamp-based staleness:
+            if instruction.last_event_time and parsed_event_time:
+                last_time = instruction.last_event_time
+                ev_time = parsed_event_time
+                if last_time.tzinfo is None and ev_time.tzinfo is not None:
+                    last_time = last_time.replace(tzinfo=timezone.utc)
+                elif last_time.tzinfo is not None and ev_time.tzinfo is None:
+                    ev_time = ev_time.replace(tzinfo=timezone.utc)
+
+                if ev_time < last_time:
+                    logger.info(
+                        "Stale webhook ignored: event %s timestamp %s is older than instruction last_event_time %s",
+                        event_id, ev_time.isoformat(), last_time.isoformat(),
+                    )
+                    record_audit_event(
+                        db=db,
+                        entity_type="INSTRUCTION",
+                        entity_id=instruction.id,
+                        event_type="WEBHOOK_STALE_EVENT_IGNORED",
+                        actor="PAYPAL_WEBHOOK",
+                        correlation_id=event_id_hash,
+                        details_redacted=json.dumps({
+                            "event_type": event_type,
+                            "event_time": ev_time.isoformat(),
+                            "last_event_time": last_time.isoformat(),
+                            "current_status": instruction.status,
+                            "attempted_status": new_status,
+                        }),
+                    )
+                    webhook_record.status = "IGNORED_STALE"
+                    webhook_record.processed_at = now
+                    db.commit()
+                    return {
+                        "status": "STALE_EVENT_IGNORED",
+                        "event_id": event_id,
+                        "instruction_id": instruction.id,
+                        "reason": f"Event time ({ev_time}) is older than last applied update ({last_time})",
+                    }
+
+            # 5. Apply state transition
+            instruction.status = new_status
+            instruction.settlement_evidence = settlement_evidence
+            instruction.paypal_item_status = event_type.split(".")[-1]
+            if transaction_id:
+                instruction.paypal_transaction_id = transaction_id
+            if payout_item_id and not instruction.paypal_payout_item_id:
+                instruction.paypal_payout_item_id = payout_item_id
+            instruction.last_event_time = parsed_event_time or now
+            instruction.last_event_id = event_id
+            instruction.updated_at = now
+
+            # Correlate and update associated ProviderSubmission
+            submission = (
+                db.query(ProviderSubmission)
+                .filter(ProviderSubmission.batch_id == instruction.batch_id)
+                .order_by(ProviderSubmission.created_at.desc())
+                .first()
+            )
+            if submission:
+                if payout_batch_id and not submission.paypal_payout_batch_id:
+                    submission.paypal_payout_batch_id = payout_batch_id
+                if submission.status == "UNKNOWN":
+                    submission.status = "SUBMITTED"
+
+            # Re-evaluate associated PaymentBatch status across all instructions
+            batch = db.query(PaymentBatch).filter(PaymentBatch.id == instruction.batch_id).first()
+            if batch:
+                all_instrs = (
+                    db.query(PaymentInstruction)
+                    .filter(PaymentInstruction.batch_id == batch.id)
+                    .all()
                 )
+                total = len(all_instrs)
+                completed_count = sum(1 for i in all_instrs if i.status == "COMPLETED")
+                failed_count = sum(1 for i in all_instrs if i.status in ("FAILED", "RETURNED", "REFUNDED", "REVERSED"))
+                unresolved_count = sum(1 for i in all_instrs if i.status in ("UNKNOWN", "SUBMITTED", "PENDING", "APPROVED"))
+
+                if total > 0:
+                    if completed_count == total:
+                        batch.status = "COMPLETED"
+                    elif failed_count == total:
+                        batch.status = "FAILED"
+                    elif completed_count > 0 and failed_count > 0:
+                        batch.status = "PARTIALLY_COMPLETED"
+                    elif unresolved_count > 0:
+                        batch.status = "SUBMITTED"
+
+                if batch.status in ("COMPLETED", "FAILED", "PARTIALLY_COMPLETED"):
+                    db.query(ActiveBatchSubmission).filter(ActiveBatchSubmission.batch_id == batch.id).delete()
+
+            record_audit_event(
+                db=db,
+                entity_type="INSTRUCTION",
+                entity_id=instruction.id,
+                event_type="WEBHOOK_RECONCILIATION_APPLIED",
+                actor="PAYPAL_WEBHOOK",
+                correlation_id=event_id_hash,
+                details_redacted=json.dumps({
+                    "event_type": event_type,
+                    "instruction_status": instruction.status,
+                    "batch_status": batch.status if batch else None,
+                    "payout_item_id": payout_item_id,
+                }),
+            )
+            logger.info(
+                "Webhook applied: event=%s instruction=%s new_status=%s batch_status=%s",
+                event_type, instruction.id, new_status, batch.status if batch else "None",
+            )
         else:
             logger.info("Webhook event %s: no matching instruction found.", event_type)
 
@@ -433,5 +602,7 @@ async def receive_paypal_webhook(
     else:
         logger.info("Webhook event %s: unhandled type, acknowledged.", event_type)
 
+    webhook_record.status = "PROCESSED"
+    webhook_record.processed_at = now
     db.commit()
     return {"status": "PROCESSED", "event_id": event_id, "event_type": event_type}

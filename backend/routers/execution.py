@@ -15,11 +15,12 @@ SECURITY:
 """
 import logging
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
 
-from dependencies import require_api_key
+from dependencies import Principal, is_auth_enforced, require_api_key, require_role
 from models.db import get_db
 from models.entities import AuditEvent, Obligation, PaymentInstruction, ProviderSubmission
 from schemas.execution import (
@@ -31,6 +32,7 @@ from schemas.execution import (
     SubmissionResponse,
 )
 from services.approval import approve_batch
+from services.audit import verify_audit_chain
 from services.execution_coordinator import refresh_status, submit_batch
 
 logger = logging.getLogger("pufi.execution")
@@ -58,13 +60,33 @@ def approve_batch_endpoint(
     body: ApproveRequest,
     request: Request,
     db: Session = Depends(get_db),
-    _auth: None = Depends(require_api_key),
+    principal: Principal = Depends(require_role("TREASURY_CHECKER")),
 ) -> ApprovalResponse:
     correlation_id = getattr(request.state, "correlation_id", str(uuid.uuid4()))
 
+    # Enforce identity integrity: prevent caller from forging arbitrary approver identities
+    approver_id = body.approver_id
+    if is_auth_enforced() and principal.auth_method != "DEV_MOCK":
+        if body.approver_id and body.approver_id != principal.identity:
+            logger.warning(
+                "Identity mismatch on batch approval: payload approver_id=%r does not match authenticated principal=%r",
+                body.approver_id,
+                principal.identity,
+            )
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "IDENTITY_MISMATCH",
+                    "message": f"Approval identity in payload ({body.approver_id}) does not match authenticated identity ({principal.identity}).",
+                },
+            )
+        approver_id = principal.identity
+    elif not approver_id:
+        approver_id = principal.identity
+
     result = approve_batch(
         batch_id=batch_id,
-        approver_id=body.approver_id,
+        approver_id=approver_id,
         selected_provider=body.selected_provider,
         routing_strategy=body.routing_strategy,
         confirmed_total=body.confirmed_total,
@@ -119,7 +141,7 @@ def submit_batch_endpoint(
     batch_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    _auth: None = Depends(require_api_key),
+    principal: Principal = Depends(require_role("CONTROLLER")),
 ) -> SubmissionResponse:
     correlation_id = getattr(request.state, "correlation_id", str(uuid.uuid4()))
 
@@ -295,3 +317,25 @@ def list_audit_events(
         )
         for ev in events
     ]
+
+
+# ===========================================================================
+# GET /audit/verify (Priority 2.0 Audit Chain Verification)
+# ===========================================================================
+
+@router.get(
+    "/audit/verify",
+    summary="Cryptographic audit chain verification",
+    description=(
+        "Traverses the SHA-256 audit hash-chain to verify chronological integrity, "
+        "detect modified row contents, identify missing/deleted events, and catch broken links. "
+        "Can verify globally or scoped to a specific entity_id."
+    ),
+)
+def verify_audit_endpoint(
+    entity_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+) -> dict:
+    result = verify_audit_chain(db=db, entity_id=entity_id)
+    return result.to_dict()
+
